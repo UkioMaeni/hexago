@@ -65,6 +65,18 @@ export class AdapterFactory implements vscode.DebugAdapterDescriptorFactory {
   }
 }
 
+/** Служебные строки hexago run --events (см. runner.EventPrefix). */
+const eventPrefix = 'hexago-event: ';
+
+/** Событие hexago run --events. */
+interface RunEvent {
+  event: 'started' | 'stopped';
+  app?: string;
+  pid?: string;
+  device?: string;
+  name?: string;
+}
+
 /** Сообщение протокола DAP — нам нужны только эти поля. */
 interface Request {
   seq: number;
@@ -83,6 +95,8 @@ class RunAdapter implements vscode.DebugAdapter {
   private seq = 1;
   private child?: cp.ChildProcess;
   private stopping = false;
+  private app?: RunEvent; // запущенное приложение — его видно на панели Call Stack
+  private pending = '';    // начало строки вывода, конец которой ещё не пришёл
 
   constructor(private readonly hexago: Hexago, private readonly config: LaunchConfig) {}
 
@@ -103,8 +117,11 @@ class RunAdapter implements vscode.DebugAdapter {
         this.respond(req);
         break;
       case 'threads':
-        // Потоков, которые можно остановить, нет — точки останова пока не поддерживаются.
-        this.respond(req, { threads: [] });
+        // Один «поток» — само приложение на устройстве, чтобы было видно, что оно работает.
+        this.respond(req, { threads: this.app ? [{ id: 1, name: threadName(this.app) }] : [] });
+        break;
+      case 'pause':
+        this.respond(req, undefined, 'Пауза и точки останова в Hexago пока не поддерживаются.');
         break;
       case 'terminate':
       case 'disconnect':
@@ -127,14 +144,16 @@ class RunAdapter implements vscode.DebugAdapter {
       args.push('-d', this.config.device);
     }
     this.output(`hexago ${args.join(' ')}\n`, 'console');
-    const child = cp.spawn(this.hexago.cmd, args, { cwd: this.config.cwd, env: this.hexago.env });
+    const child = cp.spawn(this.hexago.cmd, [...args, '--events'], { cwd: this.config.cwd, env: this.hexago.env });
     this.child = child;
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (text: string) => this.output(text, 'stdout'));
+    child.stdout.on('data', (text: string) => this.stdout(text));
     child.stderr.on('data', (text: string) => this.output(text, 'stderr'));
     child.on('error', (err) => this.output(`Не удалось запустить hexago: ${err.message}\n`, 'stderr'));
     child.on('close', (code) => {
+      this.stdout('\n'); // дописать последнюю строку, если она без перевода строки
+      this.setApp(undefined);
       this.child = undefined;
       if (!this.stopping) {
         this.output(`\nhexago run завершился (код ${code ?? '—'})\n`, 'console');
@@ -143,6 +162,49 @@ class RunAdapter implements vscode.DebugAdapter {
       this.event('terminated');
     });
     this.respond(req);
+  }
+
+  /** Вывод hexago run по строкам: служебные строки — события, остальное — в Debug Console. */
+  private stdout(text: string): void {
+    const lines = (this.pending + text).split('\n');
+    this.pending = lines.pop() ?? '';
+    let out = '';
+    for (const line of lines) {
+      if (line.startsWith(eventPrefix)) {
+        this.flush(out);
+        out = '';
+        this.runEvent(line.slice(eventPrefix.length));
+      } else {
+        out += line + '\n';
+      }
+    }
+    this.flush(out);
+  }
+
+  private flush(text: string): void {
+    if (text) {
+      this.output(text, 'stdout');
+    }
+  }
+
+  private runEvent(json: string): void {
+    try {
+      const e = JSON.parse(json) as RunEvent;
+      this.setApp(e.event === 'started' ? e : undefined);
+    } catch {
+      // незнакомая строка — сессию из-за неё не ломаем
+    }
+  }
+
+  /** Показывает или убирает приложение на панели Call Stack. */
+  private setApp(app: RunEvent | undefined): void {
+    if (app && !this.app) {
+      this.app = app;
+      this.event('thread', { reason: 'started', threadId: 1 });
+    } else if (!app && this.app) {
+      this.app = undefined;
+      this.event('thread', { reason: 'exited', threadId: 1 });
+    }
   }
 
   /** Останавливает hexago run вместе с его adb logcat и сборкой. */
@@ -175,4 +237,9 @@ class RunAdapter implements vscode.DebugAdapter {
   private output(text: string, category: 'console' | 'stdout' | 'stderr'): void {
     this.event('output', { category, output: text });
   }
+}
+
+/** Как приложение называется на панели Call Stack. */
+function threadName(app: RunEvent): string {
+  return `${app.app} (pid ${app.pid}) · ${app.name || app.device}`;
 }

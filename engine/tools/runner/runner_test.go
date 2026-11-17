@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"testing"
 
 	"hexago/tools/sdk"
@@ -24,5 +25,26 @@ func TestMatchDevice(t *testing.T) {
 	}
 	if _, ok := matchDevice(devices, "Pixel_7"); ok {
 		t.Error("Pixel_7 не подключён — не должен находиться")
+	}
+}
+
+func TestCheckProcess(t *testing.T) {
+	errExit := errors.New("exit status 1")
+	cases := []struct {
+		out  string
+		err  error
+		want processState
+	}{
+		{"12994", nil, processAlive},
+		{"12001 12994\r", nil, processAlive},
+		{"", errExit, processGone},                 // pidof ничего не нашёл
+		{"13175", nil, processGone},                // приложение перезапустили — это уже другой процесс
+		{"error: closed", errExit, processUnknown}, // сбой adb — не повод считать, что приложение закрылось
+		{"error: device offline", errExit, processUnknown},
+	}
+	for _, c := range cases {
+		if got := checkProcess(c.out, c.err, "12994"); got != c.want {
+			t.Errorf("checkProcess(%q, %v) = %v; ожидали %v", c.out, c.err, got, c.want)
+		}
 	}
 }

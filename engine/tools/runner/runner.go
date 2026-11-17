@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -49,6 +50,8 @@ var Command = &cli.Command{
 func run(ctx *cli.Context, args []string) error {
 	fs := cli.NewFlagSet("run")
 	serial := fs.String("d", "", "")
+	// --events — служебные строки для расширения VS Code: приложение запущено, завершилось.
+	events := fs.Bool("events", false, "")
 	positional, err := cli.ParseArgs(fs, args)
 	if err != nil {
 		return err
@@ -64,10 +67,10 @@ func run(ctx *cli.Context, args []string) error {
 	if platform != "android" {
 		return cli.Usagef("платформа %q пока не поддерживается, есть только android", platform)
 	}
-	return runAndroid(ctx, *serial)
+	return runAndroid(ctx, *serial, *events)
 }
 
-func runAndroid(ctx *cli.Context, serial string) error {
+func runAndroid(ctx *cli.Context, serial string, events bool) error {
 	project := ctx.Dir
 	androidDir := filepath.Join(project, "android")
 	if _, err := os.Stat(filepath.Join(project, "go.mod")); err != nil {
@@ -146,7 +149,14 @@ func runAndroid(ctx *cli.Context, serial string) error {
 	if err != nil {
 		return err
 	}
-	ctx.Printf("Приложение запущено. Лог приложения ниже, Ctrl+C — выход.\n\n")
+	if events {
+		// В редакторе останавливают кнопкой, а не Ctrl+C.
+		ctx.Printf("Приложение запущено. Лог приложения ниже.\n")
+		emit(ctx, "started", map[string]string{"app": appID, "pid": pid, "device": device.Serial, "name": device.Name})
+		defer emit(ctx, "stopped", nil)
+	} else {
+		ctx.Printf("Приложение запущено. Лог приложения ниже, Ctrl+C — выход.\n\n")
+	}
 	return streamLogs(ctx, adb, device.Serial, appID, pid)
 }
 
@@ -322,49 +332,91 @@ func streamLogs(ctx *cli.Context, adb, serial, appID, pid string) error {
 	}
 
 	// Приложение закрыли или оно упало — logcat сам не завершится, следим за процессом.
-	exited := make(chan struct{})
+	exited := make(chan string, 1)
 	go func() {
-		for {
-			select {
-			case <-c.Done():
-				return
-			case <-time.After(time.Second):
-			}
-			if now, err := sdk.Output(adb, "-s", serial, "shell", "pidof", appID); err != nil || !strings.Contains(" "+now+" ", " "+pid+" ") {
-				close(exited)
-				return
-			}
+		if reason := watchProcess(c, adb, serial, appID, pid); reason != "" {
+			exited <- reason
 		}
 	}()
 
+	// Если logcat прервётся (сбой adb), сессию не заканчиваем: она идёт, пока живо приложение.
 	lines := bufio.NewScanner(pipe)
-	done := make(chan struct{})
 	go func() {
 		for lines.Scan() {
 			if line := lines.Text(); !strings.HasPrefix(line, "--------- beginning of") {
 				ctx.Printf("%s\n", line)
 			}
 		}
-		close(done)
 	}()
 
 	select {
 	case <-interrupt:
 		ctx.Printf("\nОстановлено. Приложение продолжает работать на устройстве.\n")
-	case <-exited:
+	case reason := <-exited:
 		time.Sleep(300 * time.Millisecond) // дочитать последние строки лога
-		ctx.Printf("\nПриложение завершилось.\n")
+		ctx.Printf("\n%s\n", reason)
 		// Если Go-код упал, движок сохранил текст паники в кеше приложения.
 		// run-as читает файлы отладочного приложения без root.
 		crash, err := sdk.Output(adb, "-s", serial, "shell", "run-as", appID, "cat", "cache/"+crashFile)
 		if err == nil && strings.TrimSpace(crash) != "" {
 			ctx.Printf("\nПаника в Go-коде:\n%s\n", crash)
 		}
-	case <-done:
 	}
 	cancel()
 	logcat.Wait()
 	return nil
+}
+
+// processState — что ответило устройство на вопрос, жив ли процесс приложения.
+type processState int
+
+const (
+	processAlive   processState = iota // pidof нашёл наш процесс
+	processGone                        // pidof ответил: такого процесса нет
+	processUnknown                     // ответа нет: adb занят, устройство отключилось
+)
+
+// checkProcess спрашивает у устройства, жив ли процесс pid приложения appID.
+// pidof без находок завершается с кодом 1 и ничего не печатает; если же что-то напечатано,
+// а нашего pid там нет, — это ошибка adb («error: closed», «device offline»), а не ответ pidof.
+func checkProcess(out string, err error, pid string) processState {
+	switch {
+	case strings.Contains(" "+strings.Join(strings.Fields(out), " ")+" ", " "+pid+" "):
+		return processAlive
+	case err == nil || strings.TrimSpace(out) == "":
+		return processGone // нет вывода — pidof ничего не нашёл; есть другой pid — приложение перезапустили
+	default:
+		return processUnknown
+	}
+}
+
+// watchProcess раз в секунду проверяет, жив ли процесс приложения, и возвращает, почему перестал
+// следить: приложение завершилось или устройство пропало. Пустая строка — остановили через c.
+//
+// Одной неудачной проверке не верим: сразу после загрузки эмулятор занят, и adb shell иногда
+// отвечает ошибкой, хотя приложение работает. Нужны два ответа «процесса нет» подряд.
+func watchProcess(c context.Context, adb, serial, appID, pid string) string {
+	gone, unknown := 0, 0
+	for {
+		select {
+		case <-c.Done():
+			return ""
+		case <-time.After(time.Second):
+		}
+		out, err := sdk.Output(adb, "-s", serial, "shell", "pidof", appID)
+		switch checkProcess(out, err, pid) {
+		case processAlive:
+			gone, unknown = 0, 0
+		case processGone:
+			if gone++; gone >= 2 {
+				return "Приложение завершилось."
+			}
+		case processUnknown:
+			if unknown++; unknown >= 15 {
+				return fmt.Sprintf("Устройство %s не отвечает — похоже, оно отключилось (%s).", serial, strings.TrimSpace(out))
+			}
+		}
+	}
 }
 
 // crashFile — файл с текстом паники в кеше приложения.
@@ -378,4 +430,18 @@ func quoteIfSpaces(path string) string {
 		return `"` + path + `"`
 	}
 	return path
+}
+
+// EventPrefix начинает служебные строки hexago run --events. Расширение VS Code вырезает их
+// из вывода и по ним показывает запущенное приложение на панели отладки.
+const EventPrefix = "hexago-event: "
+
+// emit печатает служебную строку: EventPrefix и JSON {"event": ..., поля}.
+func emit(ctx *cli.Context, event string, fields map[string]string) {
+	m := map[string]string{"event": event}
+	for k, v := range fields {
+		m[k] = v
+	}
+	data, _ := json.Marshal(m)
+	ctx.Printf("%s%s\n", EventPrefix, data)
 }

@@ -234,8 +234,19 @@ export class Devices implements vscode.Disposable {
       detail: describe(d),
       choice: { device: d },
     }));
+    let emulatorsError: string | undefined;
+    const problem = (title: string, err: string): Item => ({
+      label: `$(warning) ${title}`,
+      detail: err.split(/\r?\n/).filter(Boolean).slice(0, 2).join(' '),
+    });
     const build = (emulators: Emulator[] | undefined): Item[] => {
       const items: Item[] = [];
+      if (this.error) {
+        items.push(problem('Не удалось получить список устройств', this.error));
+      }
+      if (emulatorsError) {
+        items.push(problem('Не удалось получить список эмуляторов', emulatorsError));
+      }
       if (deviceItems.length) {
         items.push({ label: 'Устройства', kind: vscode.QuickPickItemKind.Separator }, ...deviceItems);
       }
@@ -260,6 +271,7 @@ export class Devices implements vscode.Disposable {
       exec(this.hexago.cmd, ['emulators', '--json'], { env: this.hexago.env })
         .then((out) => JSON.parse(out) as Emulator[], (err: Error) => {
           log(`hexago emulators: ${err.message}`);
+          emulatorsError = err.message;
           return [] as Emulator[];
         })
         .then((emulators) => {

@@ -10,7 +10,8 @@ cd engine
 go install .
 ```
 
-`hexago.exe` ставится в `%USERPROFILE%\go\bin` (эта папка должна быть в PATH).
+`hexago.exe` ставится в `%USERPROFILE%\go\bin` (эта папка должна быть в PATH). Это нужно один раз:
+дальше `hexago` сам пересобирается, когда его исходники в движке меняются.
 
 ## Команды
 

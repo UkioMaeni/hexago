@@ -6,6 +6,8 @@
 // Установка (из папки engine):
 //
 //	go install .
+//
+// Потом hexago сам пересобирается, когда его исходники в движке меняются.
 package main
 
 import (
@@ -17,9 +19,13 @@ import (
 	"hexago/tools/devices"
 	"hexago/tools/doctor"
 	"hexago/tools/runner"
+	"hexago/tools/sdk"
 )
 
 func main() {
+	// Исходники утилиты поменялись после go install — пересобраться и перезапуститься.
+	sdk.RestartIfStale(os.Stderr)
+
 	commands := []*cli.Command{
 		creator.Command,
 		runner.Command,

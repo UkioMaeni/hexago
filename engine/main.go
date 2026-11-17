@@ -11,6 +11,7 @@ package main
 import (
 	"os"
 
+	"hexago/tools/assist"
 	"hexago/tools/cli"
 	"hexago/tools/creator"
 	"hexago/tools/doctor"
@@ -23,6 +24,7 @@ func main() {
 		runner.Command,
 		doctor.TestCommand,
 		doctor.VersionCommand,
+		assist.Command,
 	}
 	os.Exit(cli.Main(os.Args[1:], commands, os.Stdout, os.Stderr))
 }

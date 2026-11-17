@@ -32,6 +32,7 @@ type Command struct {
 	Usage   string // строка использования без слова hexago: "create [флаги] <папка>"
 	Summary string // одна строка для общего списка команд
 	Help    string // подробное описание для hexago help <команда>
+	Hidden  bool   // служебная команда: не показывать в общем списке
 	Run     func(ctx *Context, args []string) error
 }
 

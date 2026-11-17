@@ -1,0 +1,94 @@
+{
+  "name": "hexago",
+  "displayName": "Hexago",
+  "description": "Приложения на Hexago: создание и запуск проектов, действия с виджетами — обернуть, удалить, поменять местами.",
+  "version": "0.1.0",
+  "publisher": "hexago",
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:go",
+    "workspaceContains:**/go.mod"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "hexago.selectSdk",
+        "title": "Указать путь к SDK",
+        "category": "Hexago"
+      },
+      {
+        "command": "hexago.createProject",
+        "title": "Создать проект",
+        "category": "Hexago"
+      },
+      {
+        "command": "hexago.run",
+        "title": "Запустить на устройстве",
+        "category": "Hexago",
+        "icon": "$(play)"
+      },
+      {
+        "command": "hexago.doctor",
+        "title": "Проверить окружение",
+        "category": "Hexago"
+      },
+      {
+        "command": "hexago.widgetActions",
+        "title": "Действия с виджетом…",
+        "category": "Hexago"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "hexago.widgetActions",
+          "when": "editorLangId == go",
+          "group": "1_modification@0"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "hexago.widgetActions",
+          "when": "editorLangId == go"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "hexago.widgetActions",
+        "key": "ctrl+alt+w",
+        "mac": "cmd+alt+w",
+        "when": "editorLangId == go"
+      }
+    ],
+    "configuration": {
+      "title": "Hexago",
+      "properties": {
+        "hexago.sdkPath": {
+          "type": "string",
+          "default": "",
+          "scope": "machine-overridable",
+          "description": "Папка движка Hexago (в ней go.mod модуля hexago). Пусто — искать команду hexago в PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "package": "vsce package --skip-license --allow-missing-repository -o hexago.vsix"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "1.90.0",
+    "@vscode/vsce": "^3.2.0",
+    "typescript": "^5.6.0"
+  }
+}

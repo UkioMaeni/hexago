@@ -41,7 +41,7 @@ Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetS
 
 Впереди: `LayoutBuilder`, полосы переполнения Row/Column, ошибка лэйаута на месте виджета (сейчас — красный кадр).
 
-## P4.5 — Расширение для VS Code ⏳
+## P4.5 — Расширение для VS Code ✅
 
 - Поиск SDK: если `hexago` не найден — спросить папку SDK и либо добавить её в PATH,
   либо записать путь в настройки проекта (`.vscode/settings.json`).
@@ -50,6 +50,8 @@ Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetS
   «Поменять местами с ребёнком». Правки вычисляет `hexago` по синтаксическому дереву Go,
   расширение только показывает меню и применяет их.
 - Команды: создать проект, запустить на устройстве, проверить окружение.
+- Код: `engine/tools/vscode` (TypeScript), правки — `hexago assist` (`engine/tools/assist`).
+  Сборка: `npm install`, `npm run compile`, `npm run package` → `hexago.vsix`.
 
 ## P5 — Текст и иконки ⏳
 

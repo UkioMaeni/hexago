@@ -25,3 +25,9 @@ jniLibs/
 *.apk
 *.so
 libhexago.h
+
+# Расширение VS Code: зависимости, сборка, пакет; hexago, собранный расширением в SDK
+node_modules/
+engine/tools/vscode/out/
+*.vsix
+engine/bin/

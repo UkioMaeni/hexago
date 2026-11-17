@@ -38,6 +38,10 @@ type Frame struct {
 	// Scale — сколько физических пикселей в одном dp (плотность экрана).
 	// Размер в dp × Scale = размер в пикселях.
 	Scale float64
+
+	// Insets — сколько физических пикселей слева, сверху, справа и снизу занимают
+	// системные панели и вырез камеры (приложение рисует под ними).
+	Insets [4]int
 }
 
 // DrawFunc рисует кадр.
@@ -90,7 +94,8 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 }
 
 //export Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged
-func Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat) {
+func Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat,
+	insetLeft, insetTop, insetRight, insetBottom C.jint) {
 	win := C.ANativeWindow_fromSurface(env, surface)
 	if win == nil {
 		return
@@ -117,5 +122,6 @@ func Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged(env *C.JNIEnv, clazz 
 		Height: height,
 		Stride: stride,
 		Scale:  float64(density),
+		Insets: [4]int{int(insetLeft), int(insetTop), int(insetRight), int(insetBottom)},
 	})
 }

@@ -7,6 +7,7 @@ package sdk
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -91,4 +92,15 @@ func isFile(path string) bool {
 func isDir(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
+}
+
+// Tidy выполняет go mod tidy в папке проекта: подтягивает модули, которые нужны движку
+// (их записи должны быть в go.sum проекта). Вывод показывается только при ошибке.
+func Tidy(projectDir string) error {
+	cmd := exec.Command("go", "mod", "tidy")
+	cmd.Dir = projectDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("go mod tidy: %v\n%s", err, out)
+	}
+	return nil
 }

@@ -103,7 +103,10 @@ func runAndroid(ctx *cli.Context, serial string) error {
 		return err
 	}
 
-	// 1. Go → libhexago.so
+	// 1. Go → libhexago.so. Сначала зависимости: движок может требовать новые модули.
+	if err := sdk.Tidy(project); err != nil {
+		return err
+	}
 	ctx.Printf("Сборка Go для %s (%s)...\n", device.Serial, abi.ABI)
 	libDir := filepath.Join(androidDir, "app", "src", "main", "jniLibs", abi.ABI)
 	if err := os.MkdirAll(libDir, 0o755); err != nil {

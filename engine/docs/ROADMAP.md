@@ -26,17 +26,30 @@
 прямоугольники, скругления со сглаживанием, рамки, тени, градиенты, клипы, прозрачность, сдвиги),
 PNG-эталоны для проверки без устройства.
 
-## P3 — Ядро фреймворка ⏳
+## P3 — Ядро фреймворка ✅
 
 Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetState`, `BuildContext`,
 наследуемые данные (`DependOn`), ключи, render-дерево с `BoxConstraints`, лэйаут, отрисовка, hit-test.
 
-## P4 — Виджеты раскладки ⏳
+## P4 — Виджеты раскладки 🔨
 
-`Container`, `Padding`, `Center`, `Align`, `SizedBox`, `ConstrainedBox`, `LimitedBox`, `AspectRatio`,
+Готово: `Container`, `Padding`, `Center`, `Align`, `SizedBox`, `ConstrainedBox`, `LimitedBox`, `AspectRatio`,
 `FractionallySizedBox`, `Row`, `Column`, `Flex`, `Expanded`, `Flexible`, `Spacer`, `Stack`, `Positioned`,
-`Wrap`, `ColoredBox`, `DecoratedBox`, `Opacity`, `ClipRect`, `ClipRRect`, `ClipOval`, `Transform`,
-`Offstage`, `Visibility`, `Builder`, `LayoutBuilder`, `SafeArea`, `MediaQuery`.
+`Wrap`, `ColoredBox`, `DecoratedBox`, `Opacity`, `ClipRect`, `ClipRRect`, `ClipOval`, `Transform`
+(`Rotate`, `Scale`, `Translate`), `Offstage`, `Visibility`, `Builder`, `CustomPaint`, `Placeholder`,
+`SafeArea`, `MediaQuery`, `Keyed`, `ErrorBox` (паника в Build — красный бокс, ошибка в лог).
+
+Впереди: `LayoutBuilder`, полосы переполнения Row/Column, ошибка лэйаута на месте виджета (сейчас — красный кадр).
+
+## P4.5 — Расширение для VS Code ⏳
+
+- Поиск SDK: если `hexago` не найден — спросить папку SDK и либо добавить её в PATH,
+  либо записать путь в настройки проекта (`.vscode/settings.json`).
+- Действия с виджетами, как во Flutter (`Ctrl+.` / лампочка): «Обернуть в виджет…»,
+  «Обернуть в Center / Padding / Column / Row / Container / Expanded / SizedBox», «Удалить виджет»,
+  «Поменять местами с ребёнком». Правки вычисляет `hexago` по синтаксическому дереву Go,
+  расширение только показывает меню и применяет их.
+- Команды: создать проект, запустить на устройстве, проверить окружение.
 
 ## P5 — Текст и иконки ⏳
 

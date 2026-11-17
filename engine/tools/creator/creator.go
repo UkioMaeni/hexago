@@ -52,7 +52,11 @@ func New(meta CreatorMeta) error {
 	if err != nil {
 		return err // проект не создался — Android-часть не делаем
 	}
-	return createAndroidTemplate(meta.Package, meta.InitDir)
+	if err := createAndroidTemplate(meta.Package, meta.InitDir); err != nil {
+		return err
+	}
+	// Подтянуть модули, которые нужны движку, — иначе первая сборка попросит go mod tidy.
+	return sdk.Tidy(meta.InitDir)
 }
 
 // validatePackage проверяет идентификатор Android-приложения: минимум две части через точку,

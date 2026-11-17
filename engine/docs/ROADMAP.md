@@ -57,6 +57,9 @@ Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetS
   выключенных. Команды `hexago devices [--json] [--watch]`, `hexago emulators [--launch имя]`;
   `hexago run -d` принимает серийный номер, имя устройства или эмулятора, выключенный эмулятор запускает сам.
   Проект замечается и после `hexago create .` в уже открытой папке.
+- Run → Start Debugging (F5), как у Flutter ([ADR-0016](adr/0016-run-from-vscode-debugger.md)): сборка
+  и запуск на выбранном устройстве, лог в Debug Console, ■ и ⟳ на панели отладки; `hexago create`
+  кладёт `.vscode/launch.json`. Точек останова пока нет — появятся с запуском на компьютере.
 
 ## P5 — Текст и иконки 🔨
 

@@ -13,7 +13,9 @@ import (
 	"strings"
 )
 
-//go:embed templates
+// all: — чтобы попали и файлы с точкой в начале имени (.gitignore, .vscode).
+//
+//go:embed all:templates
 var templates embed.FS
 
 var segmentRe = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
@@ -126,7 +128,24 @@ func createProjectTemplate(initDir string) error {
 	if err != nil {
 		return err
 	}
-	return err
+	return writeLaunchJSON(initDir)
+}
+
+// writeLaunchJSON кладёт в проект настройку запуска для VS Code: F5 собирает и запускает
+// приложение. Свою настройку, если она уже есть, не трогаем.
+func writeLaunchJSON(initDir string) error {
+	path := filepath.Join(initDir, ".vscode", "launch.json")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	data, err := templates.ReadFile("templates/project/.vscode/launch.json")
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func createAndroidTemplate(packageStr string, initDir string) error {

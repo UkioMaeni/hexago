@@ -2,7 +2,7 @@
   "name": "hexago",
   "displayName": "Hexago",
   "description": "Приложения на Hexago: создание и запуск проектов, действия с виджетами — обернуть, удалить, поменять местами.",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "publisher": "hexago",
   "license": "UNLICENSED",
   "engines": {
@@ -15,7 +15,10 @@
   "activationEvents": [
     "onLanguage:go",
     "workspaceContains:go.mod",
-    "onStartupFinished"
+    "onStartupFinished",
+    "onDebugResolve:hexago",
+    "onDebugDynamicConfigurations:hexago",
+    "onDebugInitialConfigurations"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -51,6 +54,57 @@
         "command": "hexago.widgetActions",
         "title": "Действия с виджетом…",
         "category": "Hexago"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "hexago",
+        "label": "Hexago",
+        "languages": [
+          "go"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "properties": {
+              "device": {
+                "type": "string",
+                "description": "Где запускать: серийный номер, имя устройства или эмулятора (выключенный эмулятор запустится). Пусто — устройство, выбранное в строке состояния."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Папка проекта Hexago. Пусто — открытая папка.",
+                "default": "${workspaceFolder}"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": "Hexago",
+            "type": "hexago",
+            "request": "launch"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "Hexago: запуск на устройстве",
+            "description": "Собрать и запустить приложение (hexago run)",
+            "body": {
+              "name": "Hexago",
+              "type": "hexago",
+              "request": "launch"
+            }
+          },
+          {
+            "label": "Hexago: запуск на конкретном эмуляторе",
+            "body": {
+              "name": "Hexago (${1:Pixel_7})",
+              "type": "hexago",
+              "request": "launch",
+              "device": "${1:Pixel_7}"
+            }
+          }
+        ]
       }
     ],
     "menus": {

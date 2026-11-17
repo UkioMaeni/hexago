@@ -1,6 +1,10 @@
 package creator
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestValidatePackage(t *testing.T) {
 	good := []string{"com.example.app", "com.app.simens.group.canon", "dev.my_company.shop2"}
@@ -33,6 +37,22 @@ func TestModuleName(t *testing.T) {
 	for _, in := range []string{"Мой проект", "---", "a+b"} {
 		if _, err := moduleName(in); err == nil {
 			t.Errorf("moduleName(%q) должен вернуть ошибку", in)
+		}
+	}
+}
+
+func TestNewCopiesDotFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "app")
+	if err := createProjectTemplate(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := createAndroidTemplate("com.example.app", dir); err != nil {
+		t.Fatal(err)
+	}
+	// go:embed без all: молча пропускает файлы с точкой — проверяем, что они на месте.
+	for _, f := range []string{".vscode/launch.json", "android/.gitignore", "main.go", "go.mod"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("в новом проекте нет %s", f)
 		}
 	}
 }

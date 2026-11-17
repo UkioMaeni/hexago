@@ -4,17 +4,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { applyAssist, pickWidgetAction, WidgetActionProvider } from './assist';
+import { AdapterFactory, ConfigProvider, debugType, defaultConfig } from './debug';
 import { Devices } from './devices';
 import { exec, findHexago, requireHexago, selectSdk } from './sdk';
 
 /** Что расширение показывает, пока открыт проект Hexago. */
 interface Project extends vscode.Disposable {
+  dir: string;
   devices: Devices;
 }
 
 let project: Project | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
+  const configs = new ConfigProvider(() => project?.devices, () => project?.dir);
   context.subscriptions.push(
     vscode.commands.registerCommand('hexago.selectSdk', selectSdk),
     vscode.commands.registerCommand('hexago.createProject', createProject),
@@ -27,6 +30,10 @@ export function activate(context: vscode.ExtensionContext): void {
       { language: 'go', scheme: 'file' },
       new WidgetActionProvider(),
       { providedCodeActionKinds: WidgetActionProvider.kinds }),
+    // Run → Start Debugging (F5): собрать и запустить на выбранном устройстве.
+    vscode.debug.registerDebugConfigurationProvider(debugType, configs),
+    vscode.debug.registerDebugConfigurationProvider(debugType, configs, vscode.DebugConfigurationProviderTriggerKind.Dynamic),
+    vscode.debug.registerDebugAdapterDescriptorFactory(debugType, new AdapterFactory()),
   );
 
   // Проект может появиться и после открытия папки — например, после hexago create . в терминале.
@@ -67,11 +74,12 @@ function refreshProject(context: vscode.ExtensionContext): void {
   const runItem = vscode.window.createStatusBarItem('hexago.run', vscode.StatusBarAlignment.Left, 100);
   runItem.name = 'Hexago: запуск';
   runItem.text = '$(play) Hexago';
-  runItem.tooltip = 'Собрать и запустить на выбранном устройстве (hexago run)';
+  runItem.tooltip = 'Собрать и запустить на выбранном устройстве (как F5)';
   runItem.command = 'hexago.run';
   runItem.show();
   const devices = new Devices(context.workspaceState);
   const p: Project = {
+    dir,
     devices,
     dispose: () => {
       runItem.dispose();
@@ -91,16 +99,19 @@ function refreshProject(context: vscode.ExtensionContext): void {
   });
 }
 
-/** Собирает и запускает приложение на выбранном устройстве. */
+/**
+ * Собирает и запускает приложение на выбранном устройстве — то же, что F5: настройка «Hexago»
+ * из launch.json, если она есть, иначе настройка по умолчанию.
+ */
 async function run(): Promise<void> {
   if (!project) {
     await runTask('Запуск', ['run', 'android']);
     return;
   }
-  const target = await project.devices.runTarget();
-  if (target) {
-    await runTask('Запуск', ['run', 'android', '-d', target]);
-  }
+  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(project.dir));
+  const configs = vscode.workspace.getConfiguration('launch', folder).get<vscode.DebugConfiguration[]>('configurations', []);
+  const named = configs.find((c) => c.type === debugType && c.name === defaultConfig.name);
+  await vscode.debug.startDebugging(folder, named ? named.name : defaultConfig);
 }
 
 async function selectDevice(): Promise<void> {

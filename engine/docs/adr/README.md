@@ -19,6 +19,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0011](0011-no-hot-reload.md) | Без hot reload в v1 | принято |
 | [0012](0012-mobile-first-cli-and-layout.md) | Android первым; консольная программа hexago; весь код в engine/ | принято |
 | [0013](0013-flutter-widgets-course.md) | Практичный курс: виджеты как во Flutter; float64; x/image и go-text | принято |
+| [0014](0014-devices-and-emulators.md) | Устройства и эмуляторы: hexago devices, emulators, run -d, выбор в VS Code | принято |
 
 Шаблон нового ADR:
 

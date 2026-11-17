@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,11 +35,14 @@ var Command = &cli.Command{
      Ctrl+C — выйти.
 
 Флаги:
-  -d  серийный номер устройства, если подключено несколько (список: hexago test)
+  -d  на каком устройстве запускать, если подключено несколько: серийный номер, имя телефона
+      или имя эмулятора (списки: hexago devices, hexago emulators). Выключенный эмулятор
+      hexago запустит сам и дождётся, пока он загрузится.
 
 Примеры:
   hexago run
-  hexago run android -d emulator-5554`,
+  hexago run android -d emulator-5554
+  hexago run -d Medium_Phone_API_36`,
 	Run: run,
 }
 
@@ -82,7 +86,7 @@ func runAndroid(ctx *cli.Context, serial string) error {
 	if err != nil {
 		return err
 	}
-	device, err := pickDevice(adb, serial)
+	device, err := pickDevice(ctx, sdkDir, adb, serial)
 	if err != nil {
 		return err
 	}
@@ -147,37 +151,98 @@ func runAndroid(ctx *cli.Context, serial string) error {
 }
 
 // pickDevice выбирает устройство: заданное флагом -d или единственное подключённое.
-func pickDevice(adb, serial string) (sdk.Device, error) {
-	devices, err := sdk.Devices(adb)
+// В -d можно указать серийный номер, имя устройства или имя эмулятора. Выключенный эмулятор
+// hexago запускает сам, а загружающееся устройство — ждёт.
+func pickDevice(ctx *cli.Context, sdkDir, adb, query string) (sdk.Device, error) {
+	tracker := &sdk.DeviceTracker{ADB: adb}
+	devices, err := tracker.List()
 	if err != nil {
 		return sdk.Device{}, err
 	}
-	var ready []sdk.Device
-	for _, d := range devices {
-		if d.Ready() {
-			ready = append(ready, d)
+	if query != "" {
+		if d, ok := matchDevice(devices, query); ok {
+			return waitReady(ctx, tracker, d.Name, func(x sdk.Device) bool { return x.Serial == d.Serial })
 		}
-	}
-	if serial != "" {
-		for _, d := range ready {
-			if d.Serial == serial {
-				return d, nil
+		for _, avd := range sdk.AVDs(sdkDir) {
+			if strings.EqualFold(avd, query) {
+				ctx.Printf("Запуск эмулятора %s...\n", avd)
+				if err := sdk.LaunchEmulator(sdkDir, avd); err != nil {
+					return sdk.Device{}, fmt.Errorf("не удалось запустить эмулятор %s: %v", avd, err)
+				}
+				return waitReady(ctx, tracker, sdk.AVDLabel(avd), func(x sdk.Device) bool { return x.AVD == avd })
 			}
 		}
-		return sdk.Device{}, fmt.Errorf("устройство %s не подключено (список: hexago test)", serial)
+		return sdk.Device{}, fmt.Errorf("устройство %q не найдено (список: hexago devices, эмуляторы: hexago emulators)", query)
 	}
-	switch len(ready) {
-	case 0:
-		return sdk.Device{}, errors.New("нет подключённых устройств: запусти эмулятор или подключи телефон (hexago test подскажет, как)")
-	case 1:
+
+	var ready, booting []sdk.Device
+	for _, d := range devices {
+		switch {
+		case d.Ready():
+			ready = append(ready, d)
+		case d.State == sdk.StateBooting:
+			booting = append(booting, d)
+		}
+	}
+	switch {
+	case len(ready) == 1:
 		return ready[0], nil
-	default:
+	case len(ready) > 1:
 		var names []string
 		for _, d := range ready {
-			names = append(names, d.Serial)
+			names = append(names, fmt.Sprintf("%s (%s)", d.Name, d.Serial))
 		}
-		return sdk.Device{}, fmt.Errorf("подключено несколько устройств (%s): выбери одно флагом -d", strings.Join(names, ", "))
+		return sdk.Device{}, fmt.Errorf("подключено несколько устройств: %s — выбери одно: hexago run -d <устройство>",
+			strings.Join(names, ", "))
+	case len(booting) > 0:
+		d := booting[0]
+		return waitReady(ctx, tracker, d.Name, func(x sdk.Device) bool { return x.Serial == d.Serial })
+	default:
+		return sdk.Device{}, errors.New("нет подключённых устройств: запусти эмулятор (hexago emulators) или подключи телефон по USB")
 	}
+}
+
+// matchDevice ищет устройство по серийному номеру, имени или имени эмулятора, без учёта регистра.
+func matchDevice(devices []sdk.Device, query string) (sdk.Device, bool) {
+	for _, d := range devices {
+		if strings.EqualFold(d.Serial, query) || strings.EqualFold(d.Name, query) ||
+			(d.AVD != "" && strings.EqualFold(d.AVD, query)) {
+			return d, true
+		}
+	}
+	return sdk.Device{}, false
+}
+
+// bootTimeout — сколько ждать устройство: холодный старт эмулятора занимает минуту-две.
+const bootTimeout = 3 * time.Minute
+
+// waitReady ждёт, пока устройство появится и будет готово принять приложение.
+func waitReady(ctx *cli.Context, tracker *sdk.DeviceTracker, name string, match func(sdk.Device) bool) (sdk.Device, error) {
+	said := ""
+	for deadline := time.Now().Add(bootTimeout); time.Now().Before(deadline); time.Sleep(2 * time.Second) {
+		devices, err := tracker.List()
+		if err != nil {
+			return sdk.Device{}, err
+		}
+		i := slices.IndexFunc(devices, match)
+		state := "absent"
+		if i >= 0 {
+			if devices[i].Ready() {
+				return devices[i], nil
+			}
+			state = devices[i].State
+		}
+		if state != said {
+			said = state
+			switch state {
+			case "unauthorized":
+				ctx.Printf("%s не разрешило отладку — подтверди запрос на экране телефона...\n", name)
+			default:
+				ctx.Printf("Ждём, пока %s загрузится...\n", name)
+			}
+		}
+	}
+	return sdk.Device{}, fmt.Errorf("%s так и не стало готово за %v", name, bootTimeout)
 }
 
 var applicationIDRe = regexp.MustCompile(`applicationId\s*=\s*"([^"]+)"`)

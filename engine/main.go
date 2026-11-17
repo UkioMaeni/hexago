@@ -14,6 +14,7 @@ import (
 	"hexago/tools/assist"
 	"hexago/tools/cli"
 	"hexago/tools/creator"
+	"hexago/tools/devices"
 	"hexago/tools/doctor"
 	"hexago/tools/runner"
 )
@@ -22,6 +23,8 @@ func main() {
 	commands := []*cli.Command{
 		creator.Command,
 		runner.Command,
+		devices.DevicesCommand,
+		devices.EmulatorsCommand,
 		doctor.TestCommand,
 		doctor.VersionCommand,
 		assist.Command,

@@ -1,16 +1,25 @@
-// Расширение VS Code для Hexago: поиск SDK, команды hexago и действия с виджетами.
+// Расширение VS Code для Hexago: поиск SDK, команды hexago, выбор устройства и действия с виджетами.
 
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { applyAssist, pickWidgetAction, WidgetActionProvider } from './assist';
+import { Devices } from './devices';
 import { exec, findHexago, requireHexago, selectSdk } from './sdk';
+
+/** Что расширение показывает, пока открыт проект Hexago. */
+interface Project extends vscode.Disposable {
+  devices: Devices;
+}
+
+let project: Project | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('hexago.selectSdk', selectSdk),
     vscode.commands.registerCommand('hexago.createProject', createProject),
-    vscode.commands.registerCommand('hexago.run', () => runTask('Запуск', ['run', 'android'])),
+    vscode.commands.registerCommand('hexago.run', run),
+    vscode.commands.registerCommand('hexago.selectDevice', selectDevice),
     vscode.commands.registerCommand('hexago.doctor', () => runTask('Проверка окружения', ['test'])),
     vscode.commands.registerCommand('hexago.widgetActions', pickWidgetAction),
     vscode.commands.registerCommand('hexago.applyAssist', applyAssist),
@@ -20,26 +29,87 @@ export function activate(context: vscode.ExtensionContext): void {
       { providedCodeActionKinds: WidgetActionProvider.kinds }),
   );
 
-  const project = hexagoProject();
-  if (project) {
-    // Кнопка запуска в строке состояния — как у Flutter.
-    const run = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    run.text = '$(play) Hexago';
-    run.tooltip = 'Собрать и запустить на устройстве (hexago run android)';
-    run.command = 'hexago.run';
-    run.show();
-    context.subscriptions.push(run);
-
-    // В проекте Hexago сразу проверяем, что SDK найден, и предлагаем указать его, если нет.
-    findHexago().then(async (found) => {
-      if (!found) {
-        await requireHexago();
-      }
-    }, (e: Error) => vscode.window.showErrorMessage(e.message));
-  }
+  // Проект может появиться и после открытия папки — например, после hexago create . в терминале.
+  const refresh = () => refreshProject(context);
+  const watcher = vscode.workspace.createFileSystemWatcher('**/go.mod');
+  context.subscriptions.push(
+    watcher,
+    watcher.onDidCreate(refresh),
+    watcher.onDidChange(refresh),
+    watcher.onDidDelete(refresh),
+    vscode.workspace.onDidChangeWorkspaceFolders(refresh),
+    {
+      dispose: () => {
+        project?.dispose();
+        project = undefined;
+      },
+    },
+  );
+  refresh();
 }
 
 export function deactivate(): void {}
+
+/** Показывает кнопку запуска и выбор устройства, когда открыт проект Hexago, и прячет, когда нет. */
+function refreshProject(context: vscode.ExtensionContext): void {
+  const dir = hexagoProject();
+  void vscode.commands.executeCommand('setContext', 'hexago.project', !!dir);
+  if (!dir) {
+    project?.dispose();
+    project = undefined;
+    return;
+  }
+  if (project) {
+    return;
+  }
+
+  // Кнопка запуска и устройство в строке состояния — как у Flutter.
+  const runItem = vscode.window.createStatusBarItem('hexago.run', vscode.StatusBarAlignment.Left, 100);
+  runItem.name = 'Hexago: запуск';
+  runItem.text = '$(play) Hexago';
+  runItem.tooltip = 'Собрать и запустить на выбранном устройстве (hexago run)';
+  runItem.command = 'hexago.run';
+  runItem.show();
+  const devices = new Devices(context.workspaceState);
+  const p: Project = {
+    devices,
+    dispose: () => {
+      runItem.dispose();
+      devices.dispose();
+    },
+  };
+  project = p;
+
+  // Сразу проверяем, что SDK найден, и предлагаем указать его, если нет.
+  findHexago().then(async (found) => found ?? await requireHexago(), (e: Error) => {
+    vscode.window.showErrorMessage(e.message);
+    return undefined;
+  }).then((hexago) => {
+    if (hexago && project === p) {
+      devices.start(hexago);
+    }
+  });
+}
+
+/** Собирает и запускает приложение на выбранном устройстве. */
+async function run(): Promise<void> {
+  if (!project) {
+    await runTask('Запуск', ['run', 'android']);
+    return;
+  }
+  const target = await project.devices.runTarget();
+  if (target) {
+    await runTask('Запуск', ['run', 'android', '-d', target]);
+  }
+}
+
+async function selectDevice(): Promise<void> {
+  if (!project) {
+    vscode.window.showInformationMessage('Откройте папку проекта Hexago (в его go.mod есть зависимость от hexago).');
+    return;
+  }
+  await project.devices.choose();
+}
 
 /** Папка открытого проекта Hexago: в go.mod есть зависимость от hexago. */
 function hexagoProject(): string | undefined {

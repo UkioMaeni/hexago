@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -218,15 +217,13 @@ func checkDevices(r *report, sdkDir string) {
 		switch {
 		case d.Ready():
 			ready++
-			name := d.Model
-			if name == "" {
-				name = "устройство"
-			}
 			if _, ok := sdk.ForABI(d.ABI); ok {
-				r.ok("Устройство %s — %s, Android %s, %s", d.Serial, name, d.Release, d.ABI)
+				r.ok("Устройство %s — %s, Android %s, %s", d.Serial, d.Name, d.Release, d.ABI)
 			} else {
 				r.warn("Устройство %s — архитектура %q не поддерживается", d.Serial, d.ABI)
 			}
+		case d.State == sdk.StateBooting:
+			r.warn("Устройство %s (%s) ещё загружается", d.Serial, d.Name)
 		case d.State == "unauthorized":
 			r.warn("Устройство %s не разрешило отладку: подтверди запрос на экране телефона", d.Serial)
 		default:
@@ -235,28 +232,9 @@ func checkDevices(r *report, sdkDir string) {
 	}
 	if ready == 0 {
 		r.warn("Нет подключённых устройств — для hexago run запусти эмулятор или подключи телефон")
-		if avds := listAVDs(sdkDir); len(avds) > 0 {
+		if avds := sdk.AVDs(sdkDir); len(avds) > 0 {
 			r.note("эмуляторы: %s", strings.Join(avds, ", "))
-			r.note("запуск: %s -avd %s", filepath.Join(sdkDir, "emulator", "emulator"), avds[0])
+			r.note("запуск: hexago emulators --launch %s", avds[0])
 		}
 	}
-}
-
-// listAVDs возвращает имена созданных эмуляторов.
-func listAVDs(sdkDir string) []string {
-	emulator := filepath.Join(sdkDir, "emulator", "emulator")
-	if runtime.GOOS == "windows" {
-		emulator += ".exe"
-	}
-	out, err := sdk.Output(emulator, "-list-avds")
-	if err != nil {
-		return nil
-	}
-	var names []string
-	for line := range strings.Lines(out) {
-		if name := strings.TrimSpace(line); name != "" && !strings.Contains(name, " ") {
-			names = append(names, name)
-		}
-	}
-	return names
 }

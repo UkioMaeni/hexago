@@ -52,8 +52,11 @@ Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetS
 - Команды: создать проект, запустить на устройстве, проверить окружение.
 - Код: `engine/tools/vscode` (TypeScript), правки — `hexago assist` (`engine/tools/assist`).
   Сборка: `npm install`, `npm run compile`, `npm run package` → `hexago.vsix`.
-- Впереди: выбор устройства в строке состояния, как у Flutter — телефоны по USB и эмуляторы из списка
-  `hexago test`, запуск выключенного эмулятора, `hexago run -d` на выбранном устройстве.
+- Выбор устройства, как у Flutter ([ADR-0014](adr/0014-devices-and-emulators.md)): справа в строке
+  состояния — где запустится приложение; по щелчку — телефоны, запущенные эмуляторы и «Запустить …» для
+  выключенных. Команды `hexago devices [--json] [--watch]`, `hexago emulators [--launch имя]`;
+  `hexago run -d` принимает серийный номер, имя устройства или эмулятора, выключенный эмулятор запускает сам.
+  Проект замечается и после `hexago create .` в уже открытой папке.
 
 ## P5 — Текст и иконки 🔨
 

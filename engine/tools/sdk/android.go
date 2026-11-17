@@ -140,46 +140,6 @@ func ADB(sdkDir string) (string, error) {
 	return path, nil
 }
 
-// Device — подключённое устройство или запущенный эмулятор.
-type Device struct {
-	Serial  string // emulator-5554, R58M12ABCDE...
-	State   string // device — готово; unauthorized — не разрешена отладка; offline — не отвечает
-	Model   string // из adb devices -l
-	ABI     string // архитектура процессора: arm64-v8a, x86_64
-	Release string // версия Android: 16
-}
-
-// Ready сообщает, можно ли ставить приложение на устройство.
-func (d Device) Ready() bool { return d.State == "device" }
-
-// Devices возвращает список устройств из adb devices -l.
-// Для готовых устройств дополнительно спрашивает архитектуру и версию Android.
-func Devices(adb string) ([]Device, error) {
-	out, err := Output(adb, "devices", "-l")
-	if err != nil {
-		return nil, err
-	}
-	var list []Device
-	for line := range strings.Lines(out) {
-		fields := strings.Fields(line)
-		if len(fields) < 2 || strings.HasPrefix(line, "List of devices") || strings.HasPrefix(line, "*") {
-			continue
-		}
-		d := Device{Serial: fields[0], State: fields[1]}
-		for _, f := range fields[2:] {
-			if model, ok := strings.CutPrefix(f, "model:"); ok {
-				d.Model = model
-			}
-		}
-		if d.Ready() {
-			d.ABI, _ = Output(adb, "-s", d.Serial, "shell", "getprop", "ro.product.cpu.abi")
-			d.Release, _ = Output(adb, "-s", d.Serial, "shell", "getprop", "ro.build.version.release")
-		}
-		list = append(list, d)
-	}
-	return list, nil
-}
-
 // Output запускает программу и возвращает её вывод без пробелов по краям.
 // Ждёт не дольше 30 секунд, чтобы зависший adb не повесил hexago.
 func Output(name string, args ...string) (string, error) {

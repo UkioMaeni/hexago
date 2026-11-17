@@ -117,8 +117,12 @@ func printHelp(w io.Writer, commands []*Command) {
 	fmt.Fprintln(w, "  hexago <команда> [аргументы]")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Команды:")
+	width := 0
 	for _, c := range commands {
-		fmt.Fprintf(w, "  %-8s %s\n", c.Name, c.Summary)
+		width = max(width, len(c.Name))
+	}
+	for _, c := range commands {
+		fmt.Fprintf(w, "  %-*s  %s\n", width, c.Name, c.Summary)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Подробнее о команде: hexago help <команда>")

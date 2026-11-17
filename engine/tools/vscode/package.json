@@ -2,7 +2,7 @@
   "name": "hexago",
   "displayName": "Hexago",
   "description": "Приложения на Hexago: создание и запуск проектов, действия с виджетами — обернуть, удалить, поменять местами.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "hexago",
   "license": "UNLICENSED",
   "engines": {
@@ -14,7 +14,8 @@
   ],
   "activationEvents": [
     "onLanguage:go",
-    "workspaceContains:**/go.mod"
+    "workspaceContains:go.mod",
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -34,6 +35,12 @@
         "title": "Запустить на устройстве",
         "category": "Hexago",
         "icon": "$(play)"
+      },
+      {
+        "command": "hexago.selectDevice",
+        "title": "Выбрать устройство",
+        "category": "Hexago",
+        "icon": "$(device-mobile)"
       },
       {
         "command": "hexago.doctor",

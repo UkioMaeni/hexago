@@ -20,6 +20,9 @@ hexago create myapp             # новое приложение в папке 
 hexago create --package dev.mycompany.shop shop
 cd myapp
 hexago run android              # собрать, установить и запустить; лог приложения — в терминале
+hexago devices                  # подключённые телефоны и запущенные эмуляторы
+hexago emulators                # эмуляторы из Android Studio; --launch <имя> — запустить
+hexago run -d Pixel_7           # запустить на нужном устройстве (выключенный эмулятор hexago запустит сам)
 hexago version
 ```
 
@@ -28,7 +31,7 @@ hexago version
 ```
 engine/
   main.go     консольная программа hexago
-  tools/      её команды: create, run, test, version
+  tools/      её команды: create, run, devices, emulators, test, version; расширение VS Code
   ui/         то, что подключают приложения: виджеты, отрисовка, запуск
   platform/   встраивание в ОС (Android: JNI, NDK, HexagoActivity)
   docs/       архитектура, решения (ADR), дорожная карта

@@ -1,0 +1,8 @@
+module {{.Name}}
+
+go {{.GoVersion}}
+
+require hexago v0.0.0
+
+// Движок пока не опубликован, поэтому берётся из папки на диске.
+replace hexago => "{{.EnginePath}}"

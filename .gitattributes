@@ -1,0 +1,13 @@
+# Текст хранится с переводом строки LF — одинаково на всех системах.
+* text=auto eol=lf
+
+# Скрипты Windows обязаны быть с CRLF, а shell-скрипты — с LF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+gradlew text eol=lf
+
+# Двоичные файлы не трогать.
+*.jar binary
+*.png binary
+*.ttf binary
+*.otf binary

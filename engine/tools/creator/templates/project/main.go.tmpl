@@ -1,0 +1,13 @@
+// {{.Name}} — приложение на Hexago.
+package main
+
+import (
+	"hexago/ui/app"
+	"hexago/ui/widgets"
+)
+
+func main() {
+	app.Run(widgets.App{
+		Title: "{{.Name}}",
+	})
+}

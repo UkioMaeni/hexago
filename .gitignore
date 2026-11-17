@@ -1,0 +1,27 @@
+# Сборка
+/bin/
+/dist/
+*.exe
+*.wasm
+*.test
+*.out
+*.prof
+
+# Golden-тесты: фактические картинки и карты отличий при падении
+**/testdata/failures/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Android / Gradle: сборки, локальные пути, собранные библиотеки
+.gradle/
+.kotlin/
+.cxx/
+build/
+local.properties
+jniLibs/
+*.apk
+*.so
+libhexago.h

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Шестиугольник Hexago. Холст 108×108 dp; видимая часть адаптивной иконки — круг 66 dp в центре. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,24 L79.98,39 L79.98,69 L54,84 L28.02,69 L28.02,39 Z M54,38 L67.86,46 L67.86,62 L54,70 L40.14,62 L40.14,46 Z" />
+</vector>

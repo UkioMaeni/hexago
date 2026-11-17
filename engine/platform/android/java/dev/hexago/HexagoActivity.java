@@ -22,14 +22,15 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // Реализации — в Go, пакет hexago/platform/android.
-    private static native void nativeOnCreate();
+    private static native void nativeOnCreate(String cacheDir);
     private static native void nativeOnSurfaceChanged(Surface surface, float density);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // Запускает main приложения: там вызывается app.Run.
-        nativeOnCreate();
+        // Запускает main приложения (там вызывается app.Run). Папка кеша нужна,
+        // чтобы сохранить текст паники, если Go-код упадёт.
+        nativeOnCreate(getCacheDir().getAbsolutePath());
 
         // Поверхность во весь экран. Сама она ничего не рисует — рисует Go.
         SurfaceView view = new SurfaceView(this);

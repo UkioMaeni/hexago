@@ -4,7 +4,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
-	"hexago/tools/cli"
+	"hexago/tools/sdk"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -35,22 +35,42 @@ var javaKeywords = []string{
 // Точка внутри [...] — тоже просто точка, а не «любой символ».
 var moduleNameRe = regexp.MustCompile(`^[a-zA-Z0-9 _.-]+$`)
 
+// CreatorMeta — что нужно знать, чтобы создать проект.
 type CreatorMeta struct {
-	InitDir string
-	Flags   map[string]string
+	InitDir string // папка проекта: "." или имя новой папки
+	Package string // идентификатор Android-приложения: com.example.newapp
 }
 
+// New создаёт проект: Go-часть и Android-хост.
 func New(meta CreatorMeta) error {
-	packageFlag := meta.Flags[string(cli.PackageFlag)]
-	initDir := meta.InitDir
-	err := createProjectTemplate(initDir)
+	// Пакет проверяем до того, как что-то создано, — иначе при ошибке
+	// на диске остался бы полусделанный проект без android/.
+	if err := validatePackage(meta.Package); err != nil {
+		return err
+	}
+	err := createProjectTemplate(meta.InitDir)
 	if err != nil {
 		return err // проект не создался — Android-часть не делаем
 	}
-	return createAndroidTemplate(packageFlag, initDir)
+	return createAndroidTemplate(meta.Package, meta.InitDir)
 }
 
-func createProjectTemplate(initDir string) error{
+// validatePackage проверяет идентификатор Android-приложения: минимум две части через точку,
+// каждая — латинская буква, затем буквы, цифры и _, и не ключевое слово Java.
+func validatePackage(pkg string) error {
+	parts := strings.Split(pkg, ".")
+	if len(parts) < 2 {
+		return fmt.Errorf("пакет %q: нужно минимум две части через точку, например com.example.app", pkg)
+	}
+	for _, part := range parts {
+		if !segmentRe.MatchString(part) || slices.Contains(javaKeywords, part) {
+			return fmt.Errorf("пакет %q: неверная часть %q", pkg, part)
+		}
+	}
+	return nil
+}
+
+func createProjectTemplate(initDir string) error {
 
 	abs, err := filepath.Abs(initDir)
 	if err != nil {
@@ -60,49 +80,49 @@ func createProjectTemplate(initDir string) error{
 	if err != nil {
 		return err
 	}
-	engine, err := enginePath()
+	engine, err := sdk.EnginePath()
 	if err != nil {
 		return err
 	}
-	goVersion, err := engineGoVersion(engine)
+	goVersion, err := sdk.EngineGoVersion(engine)
 	if err != nil {
 		return err
 	}
 
-	err = os.MkdirAll(filepath.Join(initDir),0o755)
+	err = os.MkdirAll(filepath.Join(initDir), 0o755)
 	if err != nil {
 		return err
 	}
-	goModTmpl,err := templates.ReadFile("templates/project/go.mod.tmpl")
+	goModTmpl, err := templates.ReadFile("templates/project/go.mod.tmpl")
 	if err != nil {
 		return err
 	}
-	mainGoTmpl,err:= templates.ReadFile("templates/project/main.go.tmpl")
+	mainGoTmpl, err := templates.ReadFile("templates/project/main.go.tmpl")
 	if err != nil {
 		return err
 	}
 	text := strings.ReplaceAll(string(goModTmpl), "{{.Name}}", name)
 	text = strings.ReplaceAll(text, "{{.EnginePath}}", engine)
 	text = strings.ReplaceAll(text, "{{.GoVersion}}", goVersion)
-	err = os.WriteFile(filepath.Join(initDir,"go.mod"),[]byte(text),0o644)
+	err = os.WriteFile(filepath.Join(initDir, "go.mod"), []byte(text), 0o644)
 	if err != nil {
 		return err
 	}
 	text = strings.ReplaceAll(string(mainGoTmpl), "{{.Name}}", name)
-	err = os.WriteFile(filepath.Join(initDir,"main.go"),[]byte(text),0o644)
+	err = os.WriteFile(filepath.Join(initDir, "main.go"), []byte(text), 0o644)
 	if err != nil {
 		return err
 	}
-	
-	err = os.MkdirAll(filepath.Join(initDir,"src"),0o755)
+
+	err = os.MkdirAll(filepath.Join(initDir, "src"), 0o755)
 	if err != nil {
 		return err
 	}
-	err = os.MkdirAll(filepath.Join(initDir,"assets"),0o755)
+	err = os.MkdirAll(filepath.Join(initDir, "assets"), 0o755)
 	if err != nil {
 		return err
 	}
-	return  err
+	return err
 }
 
 func createAndroidTemplate(packageStr string, initDir string) error {
@@ -119,7 +139,7 @@ func createAndroidTemplate(packageStr string, initDir string) error {
 	}
 	name := pkgSlice[len(pkgSlice)-1]
 	// Папка движка: из неё Gradle возьмёт Java-часть движка (HexagoActivity).
-	engine, err := enginePath()
+	engine, err := sdk.EnginePath()
 	if err != nil {
 		return err
 	}

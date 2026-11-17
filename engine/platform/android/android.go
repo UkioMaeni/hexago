@@ -8,6 +8,15 @@ package android
 #include <stdlib.h>
 #include <android/log.h>
 #include <android/native_window_jni.h>
+
+// Функции JNI вызываются через таблицу в JNIEnv; из Go к ней удобнее
+// обращаться через маленькие обёртки на C.
+static const char* hx_string_chars(JNIEnv* env, jstring s) {
+	return (*env)->GetStringUTFChars(env, s, NULL);
+}
+static void hx_string_release(JNIEnv* env, jstring s, const char* chars) {
+	(*env)->ReleaseStringUTFChars(env, s, chars);
+}
 */
 import "C"
 
@@ -62,14 +71,22 @@ func mainMain()
 var started bool
 
 //export Java_dev_hexago_HexagoActivity_nativeOnCreate
-func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass) {
+func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass, cacheDir C.jstring) {
 	// Activity может создаваться заново (например, после возврата в приложение),
 	// а main должна выполниться один раз за всё время жизни процесса.
 	if started {
 		return
 	}
 	started = true
+	setupCrashOutput(goString(env, cacheDir))
 	mainMain()
+}
+
+// goString превращает строку Java в строку Go.
+func goString(env *C.JNIEnv, s C.jstring) string {
+	chars := C.hx_string_chars(env, s)
+	defer C.hx_string_release(env, s, chars)
+	return C.GoString(chars)
 }
 
 //export Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged

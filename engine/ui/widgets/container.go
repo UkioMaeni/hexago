@@ -7,5 +7,5 @@ type Container struct {
 	Width      *float64
 	Height     *float64
 	Background gfx.Color
-	Child Widget
+	Child      Widget
 }

@@ -13,12 +13,12 @@
 - Android-мост: `HexagoActivity`, `platform/android` (JNI, `ANativeWindow`), `app.Run` вызывает `main`
   приложения, Go заливает экран, плотность экрана приходит в Go.
 
-## P1 — Утилита `hexago` 🔨
+## P1 — Утилита `hexago` ✅
 
 - `hexago version` — версии hexago, Go и путь к движку.
 - `hexago test` — проверка окружения, как `flutter doctor`: Go, JDK, Android SDK, NDK, adb, устройства, движок.
-- `hexago run android` — сборка Go в `libhexago.so` под нужную архитектуру, Gradle, установка, запуск,
-  вывод лога приложения в терминал.
+- `hexago run android` — сборка Go в `libhexago.so` под архитектуру устройства, Gradle, установка, запуск,
+  вывод лога приложения в терминал (`fmt.Println`, паники со стеком вызовов).
 
 ## P2 — Рисование ⏳
 

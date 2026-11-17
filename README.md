@@ -3,8 +3,35 @@
 Движок кроссплатформенных приложений на Go по модели Flutter: декларативные виджеты,
 собственная отрисовка каждого пикселя. Начинаем с Android.
 
-> Статус: M1 — консольная программа `hexago` и команда `hexago create`.
+## Установка
 
-Весь код живёт в папке `engine/`.
+```bash
+cd engine
+go install .
+```
+
+`hexago.exe` ставится в `%USERPROFILE%\go\bin` (эта папка должна быть в PATH).
+
+## Команды
+
+```bash
+hexago test                     # проверить окружение: Go, Android SDK, NDK, Java, устройства
+hexago create myapp             # новое приложение в папке myapp
+hexago create --package dev.mycompany.shop shop
+cd myapp
+hexago run android              # собрать, установить и запустить; лог приложения — в терминале
+hexago version
+```
+
+## Структура
+
+```
+engine/
+  main.go     консольная программа hexago
+  tools/      её команды: create, run, test, version
+  ui/         то, что подключают приложения: виджеты, отрисовка, запуск
+  platform/   встраивание в ОС (Android: JNI, NDK, HexagoActivity)
+  docs/       архитектура, решения (ADR), дорожная карта
+```
 
 Документы: [архитектура](engine/docs/ARCHITECTURE.md) · [решения](engine/docs/adr/README.md) · [дорожная карта](engine/docs/ROADMAP.md).

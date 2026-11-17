@@ -11,14 +11,14 @@ import (
 
 func main() {
 
-	application:=w.App{
+	application := w.App{
 		Title: "Appuru",
 		Home: w.Container{
-			Width: new(200.0),
-			Height: new(200.0),
+			Width:      new(200.0),
+			Height:     new(200.0),
 			Background: gfx.ColorFromHex("#111111"),
 		},
 	}
-	
+
 	app.Run(application)
 }

@@ -52,11 +52,17 @@ Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetS
 - Команды: создать проект, запустить на устройстве, проверить окружение.
 - Код: `engine/tools/vscode` (TypeScript), правки — `hexago assist` (`engine/tools/assist`).
   Сборка: `npm install`, `npm run compile`, `npm run package` → `hexago.vsix`.
+- Впереди: выбор устройства в строке состояния, как у Flutter — телефоны по USB и эмуляторы из списка
+  `hexago test`, запуск выключенного эмулятора, `hexago run -d` на выбранном устройстве.
 
-## P5 — Текст и иконки ⏳
+## P5 — Текст и иконки 🔨
 
-Встроенный шрифт, шейпинг и переносы (go-text), `Text`, `RichText`, `DefaultTextStyle`, `TextStyle`,
-`Icon` (шрифт Material Icons).
+Готово (первая версия): `Text` и `TextStyle` (размер, цвет, жирность), перенос по словам, выравнивание строк,
+шрифт Go из golang.org/x/image (латиница и кириллица); текст ошибки в `ErrorBox`; шаблон проекта —
+стартовый экран `HomePage` с надписью «hexago».
+
+Впереди: go-text (шейпинг, сложные письменности, фолбэк шрифтов), `RichText`, `DefaultTextStyle`,
+`maxLines` и многоточие, `Icon` (шрифт Material Icons).
 
 ## P6 — Ввод, кадры, анимации, скролл ⏳
 

@@ -9,5 +9,21 @@ import (
 func main() {
 	app.Run(widgets.App{
 		Title: "{{.Name}}",
+		Home:  HomePage{},
 	})
+}
+
+// HomePage — стартовый экран приложения. Это свой виджет: тип со встроенным
+// widgets.Base и методом Build, который описывает, из чего экран состоит.
+type HomePage struct {
+	widgets.Base
+}
+
+func (HomePage) Build(ctx widgets.BuildContext) widgets.Widget {
+	return widgets.Center{
+		Child: widgets.Text{
+			Data:  "hexago",
+			Style: widgets.TextStyle{FontSize: 32, FontWeight: widgets.FontWeightBold},
+		},
+	}
 }

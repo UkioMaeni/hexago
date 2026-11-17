@@ -386,7 +386,7 @@ func (w Placeholder) Build(BuildContext) Widget {
 	}}
 }
 
-// ErrorBox — красный прямоугольник на месте виджета, при построении которого случилась паника.
+// ErrorBox — красный прямоугольник с текстом ошибки на месте виджета, при построении которого случилась паника.
 // Текст ошибки печатается в лог (hexago run покажет его в терминале).
 type ErrorBox struct {
 	Base
@@ -394,8 +394,14 @@ type ErrorBox struct {
 }
 
 func (w ErrorBox) Build(BuildContext) Widget {
-	size := 100.0
-	return LimitedBox{MaxWidth: &size, MaxHeight: &size, Child: SizedBoxExpand(ColoredBox{Color: gfx.ARGB(0xFFD32F2F)})}
+	size := 200.0
+	return LimitedBox{MaxWidth: &size, MaxHeight: &size, Child: SizedBoxExpand(ClipRect{Child: ColoredBox{
+		Color: gfx.ARGB(0xFFD32F2F),
+		Child: Padding{Padding: geom.All(8), Child: Align{Alignment: geom.TopLeft, Child: Text{
+			Data:  w.Message,
+			Style: TextStyle{FontSize: 12, Color: gfx.White},
+		}}},
+	}})}
 }
 
 // view — корень любого дерева: даёт корневой render-бокс.

@@ -70,14 +70,18 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 Впереди: go-text (шейпинг, сложные письменности, фолбэк шрифтов), `RichText`,
 `maxLines` и многоточие, `Icon` (шрифт Material Icons).
 
-## P6 — Ввод, кадры, анимации, скролл 🔨
+## P6 — Ввод, кадры, анимации, скролл ✅
 
 Готово ([ADR-0019](adr/0019-touch-input-and-gestures.md)): касания с Android, кадры по запросу (Choreographer),
 `app.Post`, пакет `ui/gestures` (арена, нажатие, двойное и долгое нажатие, перетаскивание по осям и свободное,
 масштаб с поворотом, скорость броска), `Listener`, `GestureDetector`, `IgnorePointer`, `AbsorbPointer`.
 
-Впереди: `AnimationController`, `Tween`, `Curves`, неявные анимации (`AnimatedContainer`, `AnimatedOpacity`...),
-`SingleChildScrollView`, `ListView`, `GridView`, `PageView`.
+Готово ([ADR-0022](adr/0022-animations-and-scrolling.md)): пакет `ui/animation` (кривые, Controller, физика),
+время кадра от развёртки, `NewAnimation`, неявные анимации (`AnimatedValue`, `AnimatedOpacity`, `AnimatedContainer`…),
+`SingleChildScrollView`, `ListView` (ленивый по высоте строки), `GridView`, `PageView`, бросок с трением.
+
+Дальше: скорость отрисовки (перерисовка только изменившегося или GPU), полоса прокрутки, растяжение у края,
+ленивые строки разной высоты, `Hero` и переходы между экранами (вместе с `Navigator`).
 
 ## P7 — Material 🔨
 
@@ -90,7 +94,9 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 `OutlinedButton`, `TextButton`, `IconButton`, `FloatingActionButton`, `Card`, `Divider`, `ListTile`, `Checkbox`,
 `Radio`, `Switch`, `Slider`, индикаторы прогресса (с Value), `Scaffold`, `AppBar`, `NavigationBar`.
 
-Впереди: волна нажатия и плавные переключения (с анимациями), схема из одного цвета (fromSeed), `SnackBar`,
+Волна нажатия, плавный `Switch`, бесконечные индикаторы — готово (ADR-0022).
+
+Впереди: схема из одного цвета (fromSeed), `SnackBar`,
 диалоги, `Drawer`, `Navigator`, меню, чипы, вкладки.
 
 ## P8 — Ввод текста и изображения ⏳

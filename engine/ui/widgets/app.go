@@ -5,6 +5,7 @@ import (
 	"runtime/debug"
 
 	"hexago/ui/geom"
+	"hexago/ui/gestures"
 	"hexago/ui/gfx"
 	"hexago/ui/rendering"
 )
@@ -36,18 +37,70 @@ type Binding struct {
 
 	// RequestFrame вызывается, когда что-то изменилось (SetState) и нужен новый кадр.
 	RequestFrame func()
+
+	arena    gestures.Arena
+	pointers map[int]*pointerTrack // пальцы на экране
+}
+
+// pointerTrack — палец на экране: кому доставлять его события и где он был в прошлый раз.
+type pointerTrack struct {
+	path []rendering.HitEntry
+	last geom.Offset
 }
 
 // NewBinding готовит дерево приложения. Строится оно в первом кадре, когда уже известен
 // размер экрана, — иначе всё дерево строилось бы дважды.
 func NewBinding(app Widget) *Binding {
-	b := &Binding{app: app}
+	b := &Binding{app: app, pointers: map[int]*pointerTrack{}}
 	b.owner = &BuildOwner{OnNeedsBuild: func() {
 		if b.RequestFrame != nil {
 			b.RequestFrame()
 		}
 	}}
+	b.owner.gestures = gestures.Env{Arena: &b.arena, Clock: &gestures.FakeClock{}}
 	return b
+}
+
+// SetClock задаёт часы для таймеров жестов (долгое и двойное нажатие). app.Run даёт настоящие,
+// чьи таймеры срабатывают в потоке интерфейса; в тестах — gestures.FakeClock (он же по умолчанию).
+func (b *Binding) SetClock(c gestures.Clock) { b.owner.gestures.Clock = c }
+
+// HandlePointer доставляет событие касания (координаты — в dp экрана). Когда палец опускается,
+// hit-test находит боксы под ним; все события этого пальца до отпускания получают они же,
+// от самого глубокого к корню. Потом арена жестов выбирает, чей жест победил.
+func (b *Binding) HandlePointer(e gestures.PointerEvent) {
+	// Ошибка в обработчике жеста не роняет приложение — как ошибка в Build.
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Ошибка при обработке касания: %v\n%s\n", r, debug.Stack())
+		}
+	}()
+	p := b.pointers[e.Pointer]
+	if e.Kind == gestures.PointerDown {
+		p = &pointerTrack{path: b.HitTest(e.Position).Path, last: e.Position}
+		b.pointers[e.Pointer] = p
+	}
+	if p == nil {
+		return // палец коснулся раньше, чем появилось приложение
+	}
+	e.Delta, p.last = e.Position.Sub(p.last), e.Position
+	for _, h := range p.path {
+		if ph, ok := h.Box.(rendering.PointerHandler); ok {
+			ev := e
+			ev.Local = h.Transform.Apply(e.Position)
+			ph.HandlePointer(ev)
+		}
+	}
+	switch e.Kind {
+	case gestures.PointerDown:
+		b.arena.Close(e.Pointer)
+	case gestures.PointerUp:
+		delete(b.pointers, e.Pointer)
+		b.arena.Sweep(e.Pointer)
+	case gestures.PointerCancel:
+		delete(b.pointers, e.Pointer)
+		b.arena.Cancel(e.Pointer)
+	}
 }
 
 func (b *Binding) rootWidget() Widget {

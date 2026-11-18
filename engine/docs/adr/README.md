@@ -24,6 +24,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0016](0016-run-from-vscode-debugger.md) | Запуск из VS Code через Run → Start Debugging; точки останова — позже | принято |
 | [0017](0017-types-from-own-packages.md) | Каждый тип — из своего пакета; в widgets только виджеты | принято |
 | [0018](0018-state-inside-widget.md) | Состояние — прямо в структуре виджета; Init, Update, DependenciesChanged, Dispose | принято |
+| [0019](0019-touch-input-and-gestures.md) | Касания и жесты: ui/gestures, арена, кадры по запросу | принято |
 
 Шаблон нового ADR:
 

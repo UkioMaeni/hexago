@@ -298,10 +298,13 @@ func (b *TransformBox) HitTest(result *HitTestResult, pos geom.Offset) bool {
 		return false
 	}
 	local := inv.Apply(pos)
-	if !HitTestChildren(b, result, local) {
+	result.PushTransform(inv)
+	hit := HitTestChildren(b, result, local)
+	result.PopTransform()
+	if !hit {
 		return false
 	}
-	result.Path = append(result.Path, HitEntry{Box: b, Local: pos})
+	result.Add(b, pos)
 	return true
 }
 

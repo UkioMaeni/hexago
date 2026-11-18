@@ -114,11 +114,35 @@ func (p *Proxy) Paint(ctx *PaintContext, offset geom.Offset) { PaintChildren(ctx
 type HitEntry struct {
 	Box   Box
 	Local geom.Offset
+	// Transform переводит точку из координат экрана в координаты бокса: по нему
+	// считается Local у следующих событий того же пальца.
+	Transform geom.Affine
 }
 
 // HitTestResult — все боксы под точкой касания, от самого глубокого к корню.
 type HitTestResult struct {
-	Path []HitEntry
+	Path       []HitEntry
+	transforms []geom.Affine // стек: из координат экрана в координаты текущего бокса
+}
+
+// Add записывает бокс b, в который попала точка pos (в координатах b).
+func (r *HitTestResult) Add(b Box, pos geom.Offset) {
+	r.Path = append(r.Path, HitEntry{Box: b, Local: pos, Transform: r.current()})
+}
+
+// PushTransform — проверка уходит к ребёнку: t переводит координаты родителя в координаты ребёнка.
+func (r *HitTestResult) PushTransform(t geom.Affine) {
+	r.transforms = append(r.transforms, t.Mul(r.current()))
+}
+
+// PopTransform — проверка ребёнка закончена.
+func (r *HitTestResult) PopTransform() { r.transforms = r.transforms[:len(r.transforms)-1] }
+
+func (r *HitTestResult) current() geom.Affine {
+	if len(r.transforms) == 0 {
+		return geom.Identity
+	}
+	return r.transforms[len(r.transforms)-1]
 }
 
 // SelfHitTester — бокс, который сам «ловит» касания (например, с цветным фоном).
@@ -150,7 +174,7 @@ func DefaultHitTest(b Box, result *HitTestResult, pos geom.Offset) bool {
 		hit = true
 	}
 	if hit {
-		result.Path = append(result.Path, HitEntry{Box: b, Local: pos})
+		result.Add(b, pos)
 	}
 	return hit
 }
@@ -159,7 +183,11 @@ func DefaultHitTest(b Box, result *HitTestResult, pos geom.Offset) bool {
 func HitTestChildren(b Box, result *HitTestResult, pos geom.Offset) bool {
 	ch := Children(b)
 	for i := len(ch) - 1; i >= 0; i-- {
-		if HitTest(ch[i], result, pos.Sub(ch[i].node().offset)) {
+		off := ch[i].node().offset
+		result.PushTransform(geom.Translation(-off.X, -off.Y))
+		hit := HitTest(ch[i], result, pos.Sub(off))
+		result.PopTransform()
+		if hit {
 			return true
 		}
 	}

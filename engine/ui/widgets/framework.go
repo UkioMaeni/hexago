@@ -18,6 +18,7 @@ import (
 	"runtime/debug"
 	"slices"
 
+	"hexago/ui/gestures"
 	"hexago/ui/rendering"
 )
 
@@ -191,7 +192,8 @@ func (e *Element) FindBox() rendering.Box {
 
 // BuildOwner управляет перестройками: помнит «грязные» элементы и перестраивает их по порядку.
 type BuildOwner struct {
-	dirty []*Element
+	dirty    []*Element
+	gestures gestures.Env // арена и часы для распознавателей жестов (их задаёт Binding)
 	// OnNeedsBuild вызывается, когда появился первый «грязный» элемент — пора просить кадр.
 	OnNeedsBuild func()
 }

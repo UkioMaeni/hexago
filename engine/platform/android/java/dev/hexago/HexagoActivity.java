@@ -5,7 +5,11 @@ import android.graphics.Color;
 import android.graphics.Insets;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.Choreographer;
 import android.view.DisplayCutout;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -32,14 +36,48 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
 
     // Реализации — в Go, пакет hexago/platform/android.
     private static native void nativeOnCreate(String cacheDir);
-    private static native void nativeOnSurfaceChanged(Surface surface, float density,
+    private static native void nativeDraw(Surface surface, float density,
             int insetLeft, int insetTop, int insetRight, int insetBottom);
+    private static native void nativeOnPointer(int kind, int pointer, float x, float y, long timeMillis);
+    private static native void nativeRunTasks();
+
+    // Виды событий касания — как gestures.PointerKind в Go.
+    private static final int POINTER_DOWN = 0, POINTER_MOVE = 1, POINTER_UP = 2, POINTER_CANCEL = 3;
+
+    private static final Handler main = new Handler(Looper.getMainLooper());
+    private static HexagoActivity current; // Activity на экране — ей Go заказывает кадры
+    private static boolean frameScheduled;
 
     private SurfaceView view;
+
+    /**
+     * Go просит новый кадр (что-то изменилось — например, SetState). Кадр рисуется на ближайшей
+     * вертикальной развёртке экрана; несколько просьб до неё дают один кадр. Вызывается из любого потока.
+     */
+    static void requestFrame() {
+        main.post(() -> {
+            if (frameScheduled || current == null) {
+                return;
+            }
+            frameScheduled = true;
+            Choreographer.getInstance().postFrameCallback(frameTimeNanos -> {
+                frameScheduled = false;
+                if (current != null) {
+                    current.redraw();
+                }
+            });
+        });
+    }
+
+    /** Go положил задачи для потока интерфейса (app.Post, таймеры жестов) — выполнить их там. */
+    static void wakeUp() {
+        main.post(HexagoActivity::nativeRunTasks);
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        current = this;
         // Запускает main приложения (там вызывается app.Run). Папка кеша нужна,
         // чтобы сохранить текст паники, если Go-код упадёт.
         nativeOnCreate(getCacheDir().getAbsolutePath());
@@ -52,8 +90,59 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
             redraw();
             return insets;
         });
+        // Касания — в Go: там их разбирают распознаватели жестов.
+        view.setOnTouchListener((v, event) -> {
+            sendTouch(event);
+            return true;
+        });
         setContentView(view);
         edgeToEdge();
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (current == this) {
+            current = null;
+        }
+        super.onDestroy();
+    }
+
+    /**
+     * Переводит MotionEvent в события отдельных пальцев. Координаты — в физических пикселях
+     * поверхности (она во весь экран), время — миллисекунды с включения устройства.
+     * Промежуточные точки движения (история) тоже передаются: по ним точнее скорость броска.
+     */
+    private static void sendTouch(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                int i = e.getActionIndex();
+                nativeOnPointer(POINTER_DOWN, e.getPointerId(i), e.getX(i), e.getY(i), e.getEventTime());
+                break;
+            }
+            case MotionEvent.ACTION_MOVE:
+                for (int h = 0; h < e.getHistorySize(); h++) {
+                    for (int i = 0; i < e.getPointerCount(); i++) {
+                        nativeOnPointer(POINTER_MOVE, e.getPointerId(i), e.getHistoricalX(i, h),
+                                e.getHistoricalY(i, h), e.getHistoricalEventTime(h));
+                    }
+                }
+                for (int i = 0; i < e.getPointerCount(); i++) {
+                    nativeOnPointer(POINTER_MOVE, e.getPointerId(i), e.getX(i), e.getY(i), e.getEventTime());
+                }
+                break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_POINTER_UP: {
+                int i = e.getActionIndex();
+                nativeOnPointer(POINTER_UP, e.getPointerId(i), e.getX(i), e.getY(i), e.getEventTime());
+                break;
+            }
+            case MotionEvent.ACTION_CANCEL:
+                for (int i = 0; i < e.getPointerCount(); i++) {
+                    nativeOnPointer(POINTER_CANCEL, e.getPointerId(i), e.getX(i), e.getY(i), e.getEventTime());
+                }
+                break;
+        }
     }
 
     @Override
@@ -80,7 +169,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         // Передаём каждый раз: она может поменяться, например при смене масштаба экрана.
         float density = getResources().getDisplayMetrics().density;
         int[] insets = systemInsets();
-        nativeOnSurfaceChanged(surface, density, insets[0], insets[1], insets[2], insets[3]);
+        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3]);
     }
 
     /**

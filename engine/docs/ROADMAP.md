@@ -70,10 +70,13 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 Впереди: go-text (шейпинг, сложные письменности, фолбэк шрифтов), `RichText`, `DefaultTextStyle`,
 `maxLines` и многоточие, `Icon` (шрифт Material Icons).
 
-## P6 — Ввод, кадры, анимации, скролл ⏳
+## P6 — Ввод, кадры, анимации, скролл 🔨
 
-Касания с Android, `GestureDetector`, `Listener`, кадры по vsync (Choreographer), `AnimationController`,
-`Tween`, `Curves`, неявные анимации (`AnimatedContainer`, `AnimatedOpacity`...),
+Готово ([ADR-0019](adr/0019-touch-input-and-gestures.md)): касания с Android, кадры по запросу (Choreographer),
+`app.Post`, пакет `ui/gestures` (арена, нажатие, двойное и долгое нажатие, перетаскивание по осям и свободное,
+масштаб с поворотом, скорость броска), `Listener`, `GestureDetector`, `IgnorePointer`, `AbsorbPointer`.
+
+Впереди: `AnimationController`, `Tween`, `Curves`, неявные анимации (`AnimatedContainer`, `AnimatedOpacity`...),
 `SingleChildScrollView`, `ListView`, `GridView`, `PageView`.
 
 ## P7 — Material ⏳

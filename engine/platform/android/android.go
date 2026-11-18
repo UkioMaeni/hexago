@@ -17,10 +17,48 @@ static const char* hx_string_chars(JNIEnv* env, jstring s) {
 static void hx_string_release(JNIEnv* env, jstring s, const char* chars) {
 	(*env)->ReleaseStringUTFChars(env, s, chars);
 }
+
+// Статические методы HexagoActivity, которые Go вызывает сам: requestFrame и wakeUp.
+static JavaVM* hx_vm;
+static jclass hx_class;
+static jmethodID hx_request_frame_id, hx_wake_up_id;
+
+static void hx_init(JNIEnv* env, jclass clazz) {
+	(*env)->GetJavaVM(env, &hx_vm);
+	hx_class = (*env)->NewGlobalRef(env, clazz);
+	hx_request_frame_id = (*env)->GetStaticMethodID(env, clazz, "requestFrame", "()V");
+	hx_wake_up_id = (*env)->GetStaticMethodID(env, clazz, "wakeUp", "()V");
+}
+
+// hx_call вызывает статический метод из любого потока: чужой поток на время вызова
+// подключается к Java-машине.
+static void hx_call(jmethodID m) {
+	if (hx_vm == NULL || m == NULL) {
+		return;
+	}
+	JNIEnv* env;
+	int attached = 0;
+	if ((*hx_vm)->GetEnv(hx_vm, (void**)&env, JNI_VERSION_1_6) == JNI_EDETACHED) {
+		if ((*hx_vm)->AttachCurrentThread(hx_vm, &env, NULL) != 0) {
+			return;
+		}
+		attached = 1;
+	}
+	(*env)->CallStaticVoidMethod(env, hx_class, m);
+	if (attached) {
+		(*hx_vm)->DetachCurrentThread(hx_vm);
+	}
+}
+static void hx_request_frame(void) { hx_call(hx_request_frame_id); }
+static void hx_wake_up(void) { hx_call(hx_wake_up_id); }
 */
 import "C"
 
-import "unsafe"
+import (
+	"sync"
+	"time"
+	"unsafe"
+)
 
 // Frame — буфер пикселей одного кадра.
 type Frame struct {
@@ -49,8 +87,8 @@ type DrawFunc func(f Frame)
 
 var draw DrawFunc
 
-// SetDraw задаёт функцию рисования кадра. Android вызывает её,
-// когда поверхность готова или поменяла размер.
+// SetDraw задаёт функцию рисования кадра. Android вызывает её, когда поверхность готова
+// или поменяла размер и когда Go попросил кадр (RequestFrame).
 func SetDraw(f DrawFunc) { draw = f }
 
 // Log пишет строку в Logcat с тегом hexago.
@@ -82,8 +120,62 @@ func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass
 		return
 	}
 	started = true
+	C.hx_init(env, clazz)
 	setupCrashOutput(goString(env, cacheDir))
 	mainMain()
+}
+
+// RequestFrame просит Android нарисовать новый кадр на ближайшей развёртке экрана.
+// Можно вызывать из любого потока; несколько просьб до кадра дают один кадр.
+func RequestFrame() { C.hx_request_frame() }
+
+var (
+	tasksMu sync.Mutex
+	tasks   []func()
+)
+
+// Post выполняет f в потоке интерфейса — там же, где рисуются кадры и приходят касания.
+// Можно вызывать из любой горутины.
+func Post(f func()) {
+	tasksMu.Lock()
+	tasks = append(tasks, f)
+	first := len(tasks) == 1
+	tasksMu.Unlock()
+	if first {
+		C.hx_wake_up() // задачи уже в очереди — значит, поток интерфейса уже разбужен
+	}
+}
+
+//export Java_dev_hexago_HexagoActivity_nativeRunTasks
+func Java_dev_hexago_HexagoActivity_nativeRunTasks(env *C.JNIEnv, clazz C.jclass) {
+	tasksMu.Lock()
+	run := tasks
+	tasks = nil
+	tasksMu.Unlock()
+	for _, f := range run {
+		f()
+	}
+}
+
+// PointerEvent — событие одного пальца, как его прислал Android.
+type PointerEvent struct {
+	Kind    int           // 0 — коснулся, 1 — двигается, 2 — отпущен, 3 — касание отменено
+	Pointer int           // номер пальца
+	X, Y    float64       // в физических пикселях экрана
+	Time    time.Duration // от включения устройства
+}
+
+var pointer func(PointerEvent)
+
+// SetPointer задаёт обработчик касаний; он вызывается в потоке интерфейса.
+func SetPointer(f func(PointerEvent)) { pointer = f }
+
+//export Java_dev_hexago_HexagoActivity_nativeOnPointer
+func Java_dev_hexago_HexagoActivity_nativeOnPointer(env *C.JNIEnv, clazz C.jclass, kind, id C.jint, x, y C.jfloat, timeMillis C.jlong) {
+	if pointer != nil {
+		pointer(PointerEvent{Kind: int(kind), Pointer: int(id), X: float64(x), Y: float64(y),
+			Time: time.Duration(timeMillis) * time.Millisecond})
+	}
 }
 
 // goString превращает строку Java в строку Go.
@@ -93,8 +185,8 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 	return C.GoString(chars)
 }
 
-//export Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged
-func Java_dev_hexago_HexagoActivity_nativeOnSurfaceChanged(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat,
+//export Java_dev_hexago_HexagoActivity_nativeDraw
+func Java_dev_hexago_HexagoActivity_nativeDraw(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat,
 	insetLeft, insetTop, insetRight, insetBottom C.jint) {
 	win := C.ANativeWindow_fromSurface(env, surface)
 	if win == nil {

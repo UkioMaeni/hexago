@@ -16,6 +16,8 @@ interface Edit {
   start: number;
   end: number;
   text: string;
+  /** Обычная правка, которую применить раньше основной (импорт пакета). Смещения основной — уже после неё. */
+  before?: Edit;
 }
 
 /** Байтовая позиция (UTF-8) для позиции в документе. */
@@ -71,6 +73,14 @@ export async function applyAssist(uri: vscode.Uri, pos: vscode.Position, id: str
     return;
   }
   const editor = await vscode.window.showTextDocument(doc);
+  const before = edit.before;
+  if (before) {
+    // Например, импорт "hexago/ui/geom" для Padding{Padding: geom.All(8)}.
+    const r = new vscode.Range(positionAt(doc, before.start), positionAt(doc, before.end));
+    if (!await editor.edit((b) => b.replace(r, before.text))) {
+      return;
+    }
+  }
   const range = new vscode.Range(positionAt(doc, edit.start), positionAt(doc, edit.end));
   // Сниппет: курсор встанет в место для ввода — например, на имя виджета в «Обернуть в виджет…».
   await editor.insertSnippet(new vscode.SnippetString(edit.text), range);

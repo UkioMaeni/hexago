@@ -7,6 +7,7 @@ import (
 	"hexago/ui/gfx"
 	"hexago/ui/painting"
 	"hexago/ui/rendering"
+	"hexago/ui/text"
 )
 
 // Infinity — «сколько есть места»: SizedBox{Width: new(widgets.Infinity)} растягивается на всю ширину.
@@ -399,7 +400,7 @@ func (w ErrorBox) Build(BuildContext) Widget {
 		Color: gfx.ARGB(0xFFD32F2F),
 		Child: Padding{Padding: geom.All(8), Child: Align{Alignment: geom.TopLeft, Child: Text{
 			Data:  w.Message,
-			Style: TextStyle{FontSize: 12, Color: gfx.White},
+			Style: text.Style{FontSize: 12, Color: gfx.White},
 		}}},
 	}})}
 }

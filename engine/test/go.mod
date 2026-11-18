@@ -7,6 +7,7 @@ require hexago v0.0.0
 require (
 	golang.org/x/image v0.48.0 // indirect
 	golang.org/x/sys v0.50.0 // indirect
+	golang.org/x/text v0.44.0 // indirect
 )
 
 // Движок пока не опубликован, поэтому берётся из папки на диске.

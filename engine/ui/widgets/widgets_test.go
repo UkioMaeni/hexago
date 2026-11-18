@@ -6,6 +6,7 @@ import (
 	"hexago/ui/geom"
 	"hexago/ui/gfx"
 	"hexago/ui/hexagotest"
+	"hexago/ui/painting"
 	"hexago/ui/rendering"
 	w "hexago/ui/widgets"
 )
@@ -14,47 +15,47 @@ import (
 func layoutScene() w.Widget {
 	chip := func(width float64, col gfx.Color) w.Widget {
 		return w.Container{Width: new(width), Height: new(28.0),
-			Decoration: &w.BoxDecoration{Color: col, BorderRadius: w.RadiusAll(14)}}
+			Decoration: &painting.BoxDecoration{Color: col, BorderRadius: geom.RadiusAll(14)}}
 	}
 	circle := func(col gfx.Color) w.Widget {
 		return w.Container{Width: new(48.0), Height: new(48.0),
-			Decoration: &w.BoxDecoration{Color: col, Shape: w.ShapeCircle}}
+			Decoration: &painting.BoxDecoration{Color: col, Shape: painting.Circle}}
 	}
 	return w.App{Home: w.Column{
-		CrossAxisAlignment: w.CrossAxisStretch,
+		CrossAxisAlignment: rendering.CrossAxisStretch,
 		Children: []w.Widget{
 			// Полоса как у AppBar: заголовок-заглушка слева.
 			w.Container{
-				Height: new(56.0), Color: gfx.Indigo, Padding: w.Symmetric(16, 0), Alignment: &w.AlignCenterLeft,
+				Height: new(56.0), Color: gfx.Indigo, Padding: geom.Symmetric(16, 0), Alignment: &geom.CenterLeft,
 				Child: w.Container{Width: new(120.0), Height: new(12.0),
-					Decoration: &w.BoxDecoration{Color: gfx.White.WithOpacity(0.8), BorderRadius: w.RadiusAll(6)}},
+					Decoration: &painting.BoxDecoration{Color: gfx.White.WithOpacity(0.8), BorderRadius: geom.RadiusAll(6)}},
 			},
 			// Две карточки 1:2.
-			w.Padding{Padding: w.All(16), Child: w.Row{Spacing: 12, Children: []w.Widget{
-				w.Expanded{Child: w.Container{Height: new(80.0), Decoration: &w.BoxDecoration{
-					Color: gfx.White, BorderRadius: w.RadiusAll(12),
-					BoxShadow: []w.BoxShadow{{Color: gfx.Black.WithOpacity(0.25), Offset: geom.Offset{Y: 3}, BlurRadius: 8}},
+			w.Padding{Padding: geom.All(16), Child: w.Row{Spacing: 12, Children: []w.Widget{
+				w.Expanded{Child: w.Container{Height: new(80.0), Decoration: &painting.BoxDecoration{
+					Color: gfx.White, BorderRadius: geom.RadiusAll(12),
+					BoxShadow: []painting.BoxShadow{{Color: gfx.Black.WithOpacity(0.25), Offset: geom.Offset{Y: 3}, BlurRadius: 8}},
 				}}},
-				w.Expanded{Flex: 2, Child: w.Container{Height: new(80.0), Decoration: &w.BoxDecoration{
-					BorderRadius: w.RadiusAll(12),
-					Gradient:     w.LinearGradient{Colors: []gfx.Color{gfx.Pink, gfx.Orange}},
+				w.Expanded{Flex: 2, Child: w.Container{Height: new(80.0), Decoration: &painting.BoxDecoration{
+					BorderRadius: geom.RadiusAll(12),
+					Gradient:     painting.LinearGradient{Colors: []gfx.Color{gfx.Pink, gfx.Orange}},
 				}}},
 			}}},
 			// Три круга с равными промежутками.
-			w.Padding{Padding: w.Symmetric(16, 0), Child: w.Row{
-				MainAxisAlignment: w.MainAxisSpaceBetween,
+			w.Padding{Padding: geom.Symmetric(16, 0), Child: w.Row{
+				MainAxisAlignment: rendering.MainAxisSpaceBetween,
 				Children:          []w.Widget{circle(gfx.Red), circle(gfx.Green), circle(gfx.Blue)},
 			}},
 			// Остаток экрана: Stack с рамкой, кнопкой в углу и полупрозрачным квадратом по центру.
-			w.Expanded{Child: w.Padding{Padding: w.All(16), Child: w.Stack{Children: []w.Widget{
-				w.Container{Decoration: &w.BoxDecoration{Border: w.BorderAll(gfx.Grey, 2), BorderRadius: w.RadiusAll(16)}},
+			w.Expanded{Child: w.Padding{Padding: geom.All(16), Child: w.Stack{Children: []w.Widget{
+				w.Container{Decoration: &painting.BoxDecoration{Border: painting.BorderAll(gfx.Grey, 2), BorderRadius: geom.RadiusAll(16)}},
 				w.Center{Child: w.Opacity{Opacity: 0.5, Child: w.Container{Width: new(80.0), Height: new(80.0), Color: gfx.Red}}},
 				w.Positioned{Right: new(12.0), Bottom: new(12.0), Width: new(56.0), Height: new(56.0),
-					Child: w.Container{Decoration: &w.BoxDecoration{Color: gfx.Amber, Shape: w.ShapeCircle,
-						BoxShadow: []w.BoxShadow{{Color: gfx.Black.WithOpacity(0.3), Offset: geom.Offset{Y: 4}, BlurRadius: 10}}}}},
+					Child: w.Container{Decoration: &painting.BoxDecoration{Color: gfx.Amber, Shape: painting.Circle,
+						BoxShadow: []painting.BoxShadow{{Color: gfx.Black.WithOpacity(0.3), Offset: geom.Offset{Y: 4}, BlurRadius: 10}}}}},
 			}}}},
 			// Переносимые «чипы».
-			w.Padding{Padding: w.All(16), Child: w.Wrap{Spacing: 8, RunSpacing: 8, Children: []w.Widget{
+			w.Padding{Padding: geom.All(16), Child: w.Wrap{Spacing: 8, RunSpacing: 8, Children: []w.Widget{
 				chip(70, gfx.Teal), chip(100, gfx.Purple), chip(60, gfx.Cyan), chip(90, gfx.Lime), chip(80, gfx.Brown),
 			}}},
 		},

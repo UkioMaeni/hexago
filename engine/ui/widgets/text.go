@@ -5,25 +5,14 @@ import (
 	"hexago/ui/text"
 )
 
-// TextStyle — как выглядит текст: размер, цвет, насыщенность.
-type TextStyle = text.Style
-
-// Выравнивание строк текста и насыщенность шрифта.
-const (
-	TextAlignLeft   = text.AlignLeft
-	TextAlignCenter = text.AlignCenter
-	TextAlignRight  = text.AlignRight
-
-	FontWeightRegular = text.Regular
-	FontWeightBold    = text.Bold
-)
-
 // Text — текст, как Text во Flutter: переносится по словам, если не помещается в ширину.
+//
+//	widgets.Text{Data: "Привет", Style: text.Style{FontSize: 20, FontWeight: text.Bold}}
 type Text struct {
 	Base
 	Data      string
-	Style     TextStyle
-	TextAlign text.Align
+	Style     text.Style // размер, цвет, насыщенность
+	TextAlign text.Align // выравнивание строк: text.AlignLeft, text.AlignCenter, text.AlignRight
 }
 
 func (w Text) CreateRenderObject(BuildContext) rendering.Box {

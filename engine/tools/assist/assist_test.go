@@ -9,12 +9,15 @@ import (
 
 const sample = `package main
 
-import w "hexago/ui/widgets"
+import (
+	"hexago/ui/geom"
+	w "hexago/ui/widgets"
+)
 
 func build() w.Widget {
 	return w.Column{Children: []w.Widget{
 		w.Container{Color: red, Child: w.Text{Data: "a"}},
-		w.Center{Child: w.Padding{Padding: w.All(8), Child: w.SizedBox{}}},
+		w.Center{Child: w.Padding{Padding: geom.All(8), Child: w.SizedBox{}}},
 	}}
 }
 `
@@ -84,8 +87,45 @@ func TestWrapInCenter(t *testing.T) {
 
 func TestWrapInPaddingHasPlaceholder(t *testing.T) {
 	e, _ := Apply([]byte(sample), at("w.Container{"), "wrap:Padding", ws)
-	if !strings.Contains(e.Text, "w.All(${1:8})") {
+	if !strings.Contains(e.Text, "geom.All(${1:8})") {
 		t.Errorf("в обёртке Padding нет места для ввода отступа: %s", e.Text)
+	}
+	if e.Before != nil {
+		t.Errorf("geom уже импортирован, а правка добавляет импорт: %+v", e.Before)
+	}
+}
+
+// applyEdit применяет правку так же, как расширение: сначала Before, потом основную.
+func applyEdit(src string, e Edit) string {
+	if b := e.Before; b != nil {
+		src = src[:b.Start] + b.Text + src[b.End:]
+	}
+	return src[:e.Start] + unescape(e.Text) + src[e.End:]
+}
+
+func TestWrapAddsGeomImport(t *testing.T) {
+	cases := map[string]struct{ src, want string }{
+		"одиночный импорт": {
+			"package main\n\nimport w \"hexago/ui/widgets\"\n\nvar x = w.SizedBox{}\n",
+			"package main\n\nimport (\n\t\"hexago/ui/geom\"\n\tw \"hexago/ui/widgets\"\n)\n\nvar x = w.Padding{Padding: geom.All(8), Child: w.SizedBox{}}\n",
+		},
+		"группа импортов": {
+			"package main\n\nimport (\n\t\"fmt\"\n\n\t\"hexago/ui/widgets\"\n)\n\nvar x = widgets.SizedBox{}\n",
+			"package main\n\nimport (\n\t\"fmt\"\n\n\t\"hexago/ui/geom\"\n\t\"hexago/ui/widgets\"\n)\n\nvar x = widgets.Padding{Padding: geom.All(8), Child: widgets.SizedBox{}}\n",
+		},
+		"geom последним": {
+			"package main\n\nimport (\n\t\"hexago/ui/app\"\n)\n\nimport \"hexago/ui/widgets\"\n\nvar x = widgets.SizedBox{}\n",
+			"package main\n\nimport (\n\t\"hexago/ui/app\"\n\t\"hexago/ui/geom\"\n)\n\nimport \"hexago/ui/widgets\"\n\nvar x = widgets.Padding{Padding: geom.All(8), Child: widgets.SizedBox{}}\n",
+		},
+	}
+	for name, c := range cases {
+		e, err := Apply([]byte(c.src), strings.Index(c.src, "SizedBox"), "wrap:Padding", ws)
+		if err != nil {
+			t.Fatal(name, err)
+		}
+		if got := applyEdit(c.src, e); got != c.want {
+			t.Errorf("%s: получили\n%s\nожидали\n%s", name, got, c.want)
+		}
 	}
 }
 
@@ -96,7 +136,7 @@ func TestRemoveKeepsChild(t *testing.T) {
 }
 
 func TestSwapWithChild(t *testing.T) {
-	want := `w.Padding{Padding: w.All(8), Child: w.Center{Child: w.SizedBox{}}}`
+	want := `w.Padding{Padding: geom.All(8), Child: w.Center{Child: w.SizedBox{}}}`
 	if got := apply(t, "w.Center{", "swap"); got != want {
 		t.Errorf("получили\n%s\nожидали\n%s", got, want)
 	}
@@ -114,7 +154,8 @@ func TestDotImportQualifier(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := unescape(e.Text); got != "Padding{Padding: All(8), Child: SizedBox{}}" {
-		t.Errorf("при import . без префикса: %q", got)
+	want := "package main\n\nimport (\n\t\"hexago/ui/geom\"\n\t. \"hexago/ui/widgets\"\n)\n\nvar x = Center{Child: Padding{Padding: geom.All(8), Child: SizedBox{}}}\n"
+	if got := applyEdit(src, e); got != want {
+		t.Errorf("при import . без префикса:\n%s", got)
 	}
 }

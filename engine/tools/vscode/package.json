@@ -2,7 +2,7 @@
   "name": "hexago",
   "displayName": "Hexago",
   "description": "Приложения на Hexago: создание и запуск проектов, действия с виджетами — обернуть, удалить, поменять местами.",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "publisher": "hexago",
   "license": "UNLICENSED",
   "engines": {

@@ -22,6 +22,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0014](0014-devices-and-emulators.md) | Устройства и эмуляторы: hexago devices, emulators, run -d, выбор в VS Code | принято |
 | [0015](0015-hexago-rebuilds-itself.md) | hexago пересобирает себя, когда меняются его исходники | принято |
 | [0016](0016-run-from-vscode-debugger.md) | Запуск из VS Code через Run → Start Debugging; точки останова — позже | принято |
+| [0017](0017-types-from-own-packages.md) | Каждый тип — из своего пакета; в widgets только виджеты | принято |
 
 Шаблон нового ADR:
 

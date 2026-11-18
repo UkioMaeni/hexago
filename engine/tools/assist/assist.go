@@ -28,6 +28,10 @@ type Edit struct {
 	Start int    `json:"start"`
 	End   int    `json:"end"`
 	Text  string `json:"text"`
+	// Before — обычная (не сниппет) правка, которую применить раньше основной: например,
+	// импорт пакета geom для Padding{Padding: geom.All(8)}. Смещения основной правки уже
+	// посчитаны для текста после неё.
+	Before *Edit `json:"before,omitempty"`
 }
 
 // Widgets — имена типов-виджетов: из движка и из пакета, где редактируется файл.
@@ -82,7 +86,17 @@ func Apply(src []byte, offset int, id string, ws Widgets) (Edit, error) {
 		name := strings.TrimPrefix(id, "wrap:")
 		for _, w := range wrappers {
 			if w.id == name {
-				return Edit{Start: start, End: end, Text: w.wrap(t.qual, escapeSnippet(string(src[start:end])))}, nil
+				q := quals{widgets: t.qual, geom: "geom."}
+				var before *Edit
+				if w.geom {
+					q.geom, before = importPackage(t.file, t.fset, src, "hexago/ui/geom", "geom")
+				}
+				e := Edit{Start: start, End: end, Text: w.wrap(q, escapeSnippet(string(src[start:end])))}
+				if before != nil {
+					shift := len(before.Text) - (before.End - before.Start)
+					e.Start, e.End, e.Before = e.Start+shift, e.End+shift, before
+				}
+				return e, nil
 			}
 		}
 		return Edit{}, fmt.Errorf("неизвестная обёртка %q", name)
@@ -102,44 +116,48 @@ func Apply(src []byte, offset int, id string, ws Widgets) (Edit, error) {
 	return Edit{}, fmt.Errorf("неизвестное действие %q", id)
 }
 
+// quals — как в файле пишутся пакеты: "widgets.", "w.", "" при import . и т. п.
+type quals struct{ widgets, geom string }
+
 // wrapper — обёртка из меню.
 type wrapper struct {
 	id, title string
-	wrap      func(q, child string) string
+	geom      bool // нужен пакет hexago/ui/geom (отступы, скругления, выравнивания)
+	wrap      func(q quals, child string) string
 }
 
 var wrappers = []wrapper{
-	{"Widget", "Обернуть в виджет…", func(q, c string) string { return "${1:" + q + "Widget}{Child: " + c + "}" }},
-	{"Center", "Обернуть в Center", func(q, c string) string { return q + "Center{Child: " + c + "}" }},
-	{"Padding", "Обернуть в Padding", func(q, c string) string {
-		return q + "Padding{Padding: " + q + "All(${1:8}), Child: " + c + "}"
+	{"Widget", "Обернуть в виджет…", false, func(q quals, c string) string { return "${1:" + q.widgets + "Widget}{Child: " + c + "}" }},
+	{"Center", "Обернуть в Center", false, func(q quals, c string) string { return q.widgets + "Center{Child: " + c + "}" }},
+	{"Padding", "Обернуть в Padding", true, func(q quals, c string) string {
+		return q.widgets + "Padding{Padding: " + q.geom + "All(${1:8}), Child: " + c + "}"
 	}},
-	{"Container", "Обернуть в Container", func(q, c string) string { return q + "Container{${1}Child: " + c + "}" }},
-	{"SizedBox", "Обернуть в SizedBox", func(q, c string) string {
-		return q + "SizedBox{Width: new(${1:100.0}), Height: new(${2:100.0}), Child: " + c + "}"
+	{"Container", "Обернуть в Container", false, func(q quals, c string) string { return q.widgets + "Container{${1}Child: " + c + "}" }},
+	{"SizedBox", "Обернуть в SizedBox", false, func(q quals, c string) string {
+		return q.widgets + "SizedBox{Width: new(${1:100.0}), Height: new(${2:100.0}), Child: " + c + "}"
 	}},
-	{"Align", "Обернуть в Align", func(q, c string) string {
-		return q + "Align{Alignment: " + q + "${1:AlignCenter}, Child: " + c + "}"
+	{"Align", "Обернуть в Align", true, func(q quals, c string) string {
+		return q.widgets + "Align{Alignment: " + q.geom + "${1:Center}, Child: " + c + "}"
 	}},
-	{"Expanded", "Обернуть в Expanded", func(q, c string) string { return q + "Expanded{Child: " + c + "}" }},
-	{"Column", "Обернуть в Column", func(q, c string) string {
-		return q + "Column{Children: []" + q + "Widget{" + c + "${1}}}"
+	{"Expanded", "Обернуть в Expanded", false, func(q quals, c string) string { return q.widgets + "Expanded{Child: " + c + "}" }},
+	{"Column", "Обернуть в Column", false, func(q quals, c string) string {
+		return q.widgets + "Column{Children: []" + q.widgets + "Widget{" + c + "${1}}}"
 	}},
-	{"Row", "Обернуть в Row", func(q, c string) string {
-		return q + "Row{Children: []" + q + "Widget{" + c + "${1}}}"
+	{"Row", "Обернуть в Row", false, func(q quals, c string) string {
+		return q.widgets + "Row{Children: []" + q.widgets + "Widget{" + c + "${1}}}"
 	}},
-	{"Stack", "Обернуть в Stack", func(q, c string) string {
-		return q + "Stack{Children: []" + q + "Widget{" + c + "${1}}}"
+	{"Stack", "Обернуть в Stack", false, func(q quals, c string) string {
+		return q.widgets + "Stack{Children: []" + q.widgets + "Widget{" + c + "${1}}}"
 	}},
-	{"Opacity", "Обернуть в Opacity", func(q, c string) string {
-		return q + "Opacity{Opacity: ${1:0.5}, Child: " + c + "}"
+	{"Opacity", "Обернуть в Opacity", false, func(q quals, c string) string {
+		return q.widgets + "Opacity{Opacity: ${1:0.5}, Child: " + c + "}"
 	}},
-	{"ClipRRect", "Обернуть в ClipRRect", func(q, c string) string {
-		return q + "ClipRRect{BorderRadius: " + q + "RadiusAll(${1:8}), Child: " + c + "}"
+	{"ClipRRect", "Обернуть в ClipRRect", true, func(q quals, c string) string {
+		return q.widgets + "ClipRRect{BorderRadius: " + q.geom + "RadiusAll(${1:8}), Child: " + c + "}"
 	}},
-	{"SafeArea", "Обернуть в SafeArea", func(q, c string) string { return q + "SafeArea{Child: " + c + "}" }},
-	{"Builder", "Обернуть в Builder", func(q, c string) string {
-		return q + "Builder{Builder: func(ctx " + q + "BuildContext) " + q + "Widget {\n\treturn " + c + "\n}}"
+	{"SafeArea", "Обернуть в SafeArea", false, func(q quals, c string) string { return q.widgets + "SafeArea{Child: " + c + "}" }},
+	{"Builder", "Обернуть в Builder", false, func(q quals, c string) string {
+		return q.widgets + "Builder{Builder: func(ctx " + q.widgets + "BuildContext) " + q.widgets + "Widget {\n\treturn " + c + "\n}}"
 	}},
 }
 
@@ -332,4 +350,56 @@ func widgetsQualifier(f *ast.File) string {
 func escapeSnippet(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `$`, `\$`, `}`, `\}`)
 	return r.Replace(s)
+}
+
+// importPackage возвращает, как в файле обращаться к пакету path ("geom.", "g.", "" при import .),
+// и правку, которая добавит импорт, если его ещё нет (иначе nil). name — имя пакета по умолчанию.
+// Новый импорт встаёт по алфавиту среди остальных, как его поставил бы goimports.
+func importPackage(f *ast.File, fset *token.FileSet, src []byte, path, name string) (string, *Edit) {
+	for _, imp := range f.Imports {
+		if p, _ := strconv.Unquote(imp.Path.Value); p == path {
+			switch {
+			case imp.Name == nil:
+				return name + ".", nil
+			case imp.Name.Name == ".":
+				return "", nil
+			default:
+				return imp.Name.Name + ".", nil
+			}
+		}
+	}
+	off := func(p token.Pos) int { return fset.Position(p).Offset }
+	quoted := strconv.Quote(path)
+	for _, d := range f.Decls {
+		g, ok := d.(*ast.GenDecl)
+		if !ok || g.Tok != token.IMPORT {
+			continue
+		}
+		if !g.Lparen.IsValid() {
+			// import "x" → import (\n\t"x"\n\t"path"\n), по алфавиту.
+			lines := []string{string(src[off(g.Specs[0].Pos()):off(g.Specs[0].End())]), quoted}
+			if importPath(g.Specs[0]) > path {
+				lines[0], lines[1] = lines[1], lines[0]
+			}
+			text := "import (\n\t" + strings.Join(lines, "\n\t") + "\n)"
+			return name + ".", &Edit{Start: off(g.Pos()), End: off(g.End()), Text: text}
+		}
+		for _, s := range g.Specs {
+			if importPath(s) > path {
+				at := off(s.Pos())
+				return name + ".", &Edit{Start: at, End: at, Text: quoted + "\n\t"}
+			}
+		}
+		at := off(g.Specs[len(g.Specs)-1].End())
+		return name + ".", &Edit{Start: at, End: at, Text: "\n\t" + quoted}
+	}
+	// Импортов нет вовсе — сразу после строки package.
+	at := off(f.Name.End())
+	return name + ".", &Edit{Start: at, End: at, Text: "\n\nimport " + quoted}
+}
+
+// importPath — путь пакета в строке импорта.
+func importPath(s ast.Spec) string {
+	p, _ := strconv.Unquote(s.(*ast.ImportSpec).Path.Value)
+	return p
 }

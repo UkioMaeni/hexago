@@ -3,22 +3,25 @@ package widgets_test
 import (
 	"testing"
 
+	"hexago/ui/geom"
 	"hexago/ui/gfx"
 	"hexago/ui/hexagotest"
+	"hexago/ui/rendering"
+	"hexago/ui/text"
 	w "hexago/ui/widgets"
 )
 
 func TestTextGolden(t *testing.T) {
 	tree := w.App{Home: w.Column{
-		MainAxisAlignment: w.MainAxisCenter,
+		MainAxisAlignment: rendering.MainAxisCenter,
 		Children: []w.Widget{
-			w.Text{Data: "hexago", Style: w.TextStyle{FontSize: 32, FontWeight: w.FontWeightBold}},
+			w.Text{Data: "hexago", Style: text.Style{FontSize: 32, FontWeight: text.Bold}},
 			w.SizedBox{Height: new(12.0)},
-			w.Text{Data: "Привет, мир! Hello, world!", Style: w.TextStyle{FontSize: 16, Color: gfx.Indigo}},
+			w.Text{Data: "Привет, мир! Hello, world!", Style: text.Style{FontSize: 16, Color: gfx.Indigo}},
 			w.SizedBox{Height: new(12.0)},
-			w.Padding{Padding: w.Symmetric(24, 0), Child: w.Text{
+			w.Padding{Padding: geom.Symmetric(24, 0), Child: w.Text{
 				Data:      "Длинный текст переносится по словам, если не помещается в ширину экрана.",
-				TextAlign: w.TextAlignCenter,
+				TextAlign: text.AlignCenter,
 			}},
 		},
 	}}

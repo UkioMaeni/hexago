@@ -1,6 +1,7 @@
 package dev.hexago;
 
 import android.app.Activity;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.os.Build;
@@ -37,7 +38,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     // Реализации — в Go, пакет hexago/platform/android.
     private static native void nativeOnCreate(String cacheDir);
     private static native void nativeDraw(Surface surface, float density,
-            int insetLeft, int insetTop, int insetRight, int insetBottom);
+            int insetLeft, int insetTop, int insetRight, int insetBottom, boolean darkTheme);
     private static native void nativeOnPointer(int kind, int pointer, float x, float y, long timeMillis);
     private static native void nativeRunTasks();
 
@@ -69,6 +70,18 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         });
     }
 
+    /**
+     * Go задаёт вид системных панелей (виджет SystemBars): светлые значки — для тёмного фона.
+     * Вызывается из любого потока.
+     */
+    static void setSystemBars(boolean lightIcons) {
+        main.post(() -> {
+            if (current != null) {
+                current.setBarIcons(lightIcons);
+            }
+        });
+    }
+
     /** Go положил задачи для потока интерфейса (app.Post, таймеры жестов) — выполнить их там. */
     static void wakeUp() {
         main.post(HexagoActivity::nativeRunTasks);
@@ -97,6 +110,14 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         });
         setContentView(view);
         edgeToEdge();
+    }
+
+    // Тема системы, размер шрифта и т. п. меняются без пересоздания Activity (configChanges) —
+    // перерисовать с новыми данными.
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        redraw();
     }
 
     @Override
@@ -169,7 +190,9 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         // Передаём каждый раз: она может поменяться, например при смене масштаба экрана.
         float density = getResources().getDisplayMetrics().density;
         int[] insets = systemInsets();
-        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3]);
+        boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
+                == Configuration.UI_MODE_NIGHT_YES;
+        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3], dark);
     }
 
     /**
@@ -196,15 +219,28 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         }
         if (Build.VERSION.SDK_INT >= 30) {
             w.setDecorFitsSystemWindows(false);
-            int light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+        }
+        setBarIcons(false);
+    }
+
+    /**
+     * Цвет значков строки состояния и панели навигации: тёмные — для светлого фона (по умолчанию),
+     * светлые — для тёмного.
+     */
+    private void setBarIcons(boolean lightIcons) {
+        Window w = getWindow();
+        if (Build.VERSION.SDK_INT >= 30) {
+            int mask = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
                     | WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
-            w.getInsetsController().setSystemBarsAppearance(light, light);
+            w.getInsetsController().setSystemBarsAppearance(lightIcons ? 0 : mask, mask);
         } else {
-            w.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            int flags = View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                     | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-                    | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                    | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION;
+            if (!lightIcons) {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+            }
+            w.getDecorView().setSystemUiVisibility(flags);
         }
     }
 

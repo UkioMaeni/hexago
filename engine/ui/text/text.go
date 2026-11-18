@@ -12,9 +12,11 @@ import (
 	"strings"
 	"sync"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/gobold"
+	"golang.org/x/image/font/gofont/gomedium"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
 	"golang.org/x/image/math/fixed"
@@ -23,12 +25,14 @@ import (
 	"hexago/ui/gfx"
 )
 
-// Weight — насыщенность шрифта.
+// Weight — насыщенность шрифта. Нулевое значение — «не задана»: берётся у стиля по умолчанию
+// (widgets.DefaultTextStyle), а если и там нет — Regular.
 type Weight uint8
 
 const (
-	Regular Weight = iota
-	Bold
+	Regular Weight = iota + 1 // обычный (400)
+	Medium                    // полужирный (500) — в Material 3 им набраны заголовки и подписи кнопок
+	Bold                      // жирный (700)
 )
 
 // Align — выравнивание строк внутри ширины абзаца.
@@ -40,11 +44,34 @@ const (
 	AlignRight
 )
 
-// Style — как выглядит текст, как TextStyle во Flutter.
+// Style — как выглядит текст, как TextStyle во Flutter. Нулевое поле — «не задано»: оно берётся
+// у стиля по умолчанию (Merge), а если и там нет — значение из комментария.
 type Style struct {
-	FontSize   float64   // размер в dp; 0 — 14, как во Flutter
-	Color      gfx.Color // цвет; прозрачный (нулевой) — чёрный с непрозрачностью 87 %
-	FontWeight Weight
+	FontSize      float64   // размер в dp; 0 — 14, как во Flutter
+	Color         gfx.Color // цвет; прозрачный (нулевой) — чёрный с непрозрачностью 87 %
+	FontWeight    Weight    // насыщенность; 0 — Regular
+	LineHeight    float64   // высота строки в dp (как line height в Material 3); 0 — как у шрифта
+	LetterSpacing float64   // разрядка: добавка после каждой буквы, в dp
+}
+
+// Merge дополняет незаданные поля стиля полями base: s.Merge(base).
+func (s Style) Merge(base Style) Style {
+	if s.FontSize == 0 {
+		s.FontSize = base.FontSize
+	}
+	if s.Color.IsTransparent() {
+		s.Color = base.Color
+	}
+	if s.FontWeight == 0 {
+		s.FontWeight = base.FontWeight
+	}
+	if s.LineHeight == 0 {
+		s.LineHeight = base.LineHeight
+	}
+	if s.LetterSpacing == 0 {
+		s.LetterSpacing = base.LetterSpacing
+	}
+	return s
 }
 
 func (s Style) size() float64 {
@@ -77,7 +104,12 @@ func Layout(s string, style Style, maxWidth float64) *Paragraph {
 	face := faceFor(style.FontWeight, style.size())
 	m := face.Metrics()
 	p := &Paragraph{style: style, ascent: fx(m.Ascent), line: fx(m.Height)}
-	measure := func(t string) float64 { return fx(font.MeasureString(face, t)) }
+	if style.LineHeight > 0 {
+		// Лишнее (или недостающее) место делится поровну над и под строкой, как в Material.
+		p.ascent += (style.LineHeight - p.line) / 2
+		p.line = style.LineHeight
+	}
+	measure := func(t string) float64 { return advance(face, t, style.LetterSpacing) }
 
 	for _, raw := range strings.Split(s, "\n") {
 		words := strings.FieldsFunc(raw, unicode.IsSpace)
@@ -128,15 +160,30 @@ func (p *Paragraph) Paint(c *gfx.Canvas, at geom.Offset, align Align, boxWidth f
 			x += boxWidth - p.widths[i]
 		}
 		baseline := m.Apply(geom.Offset{X: x, Y: at.Y + p.ascent + float64(i)*p.line})
-		drawLine(c, face, line, baseline, col)
+		drawLine(c, face, line, baseline, col, p.style.LetterSpacing*k)
 	}
 }
 
-// drawLine рисует строку с базовой линией в точке экрана origin (в пикселях).
-func drawLine(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col gfx.Color) {
+// advance — ширина строки с разрядкой spacing после каждой буквы.
+func advance(face font.Face, s string, spacing float64) float64 {
+	if spacing == 0 {
+		return fx(font.MeasureString(face, s))
+	}
+	var w float64
+	for _, r := range s {
+		a, _ := face.GlyphAdvance(r)
+		w += fx(a) + spacing
+	}
+	return w
+}
+
+// drawLine рисует строку с базовой линией в точке экрана origin (в пикселях);
+// spacing — разрядка в пикселях.
+func drawLine(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col gfx.Color, spacing float64) {
 	bounds, _ := font.BoundString(face, s)
+	extra := int(math.Ceil(math.Abs(spacing) * float64(utf8.RuneCountInString(s))))
 	minX, minY := bounds.Min.X.Floor()-1, bounds.Min.Y.Floor()-1
-	maxX, maxY := bounds.Max.X.Ceil()+2, bounds.Max.Y.Ceil()+1
+	maxX, maxY := bounds.Max.X.Ceil()+2+extra, bounds.Max.Y.Ceil()+1
 	ix, iy := int(math.Floor(origin.X)), int(math.Floor(origin.Y))
 	mask := image.NewAlpha(image.Rect(0, 0, maxX-minX, maxY-minY))
 	d := font.Drawer{
@@ -149,13 +196,23 @@ func drawLine(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col g
 			Y: fixed.I(-minY) + fixed.Int26_6((origin.Y-float64(iy))*64),
 		},
 	}
-	d.DrawString(s)
+	if spacing == 0 {
+		d.DrawString(s)
+	} else {
+		for _, r := range s {
+			d.DrawString(string(r))
+			d.Dot.X += fixed.Int26_6(spacing * 64)
+		}
+	}
 	c.DrawMask(mask, image.Point{X: ix + minX, Y: iy + minY}, col)
 }
 
 // faceFor возвращает шрифт нужной насыщенности и размера (размер в единицах координат).
 // Шрифты кешируются: создание face — дорогая операция.
 func faceFor(w Weight, size float64) font.Face {
+	if w == 0 {
+		w = Regular
+	}
 	key := faceKey{w, math.Round(size*4) / 4}
 	facesMu.Lock()
 	defer facesMu.Unlock()
@@ -186,7 +243,10 @@ func parsed(w Weight) *opentype.Font {
 		return f
 	}
 	src := goregular.TTF
-	if w == Bold {
+	switch w {
+	case Medium:
+		src = gomedium.TTF
+	case Bold:
 		src = gobold.TTF
 	}
 	f, err := opentype.Parse(src)

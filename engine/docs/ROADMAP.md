@@ -63,11 +63,11 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 
 ## P5 — Текст и иконки 🔨
 
-Готово (первая версия): `Text` и `TextStyle` (размер, цвет, жирность), перенос по словам, выравнивание строк,
-шрифт Go из golang.org/x/image (латиница и кириллица); текст ошибки в `ErrorBox`; шаблон проекта —
-стартовый экран `HomePage` с надписью «hexago».
+Готово (первая версия): `Text` и `text.Style` (размер, цвет, насыщенность Regular/Medium/Bold, высота строки,
+разрядка), `DefaultTextStyle`, перенос по словам, выравнивание строк, шрифт Go из golang.org/x/image
+(латиница и кириллица); текст ошибки в `ErrorBox`; шаблон проекта — стартовый экран `HomePage` с надписью «hexago».
 
-Впереди: go-text (шейпинг, сложные письменности, фолбэк шрифтов), `RichText`, `DefaultTextStyle`,
+Впереди: go-text (шейпинг, сложные письменности, фолбэк шрифтов), `RichText`,
 `maxLines` и многоточие, `Icon` (шрифт Material Icons).
 
 ## P6 — Ввод, кадры, анимации, скролл 🔨
@@ -79,9 +79,13 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 Впереди: `AnimationController`, `Tween`, `Curves`, неявные анимации (`AnimatedContainer`, `AnimatedOpacity`...),
 `SingleChildScrollView`, `ListView`, `GridView`, `PageView`.
 
-## P7 — Material ⏳
+## P7 — Material 🔨
 
-`Theme`, `MaterialApp`, `Scaffold`, `AppBar`, кнопки (`ElevatedButton`, `TextButton`, `OutlinedButton`,
+Готово ([ADR-0020](adr/0020-material3-theme.md)): тема Material 3 — `material.ColorScheme` (базовые светлая
+и тёмная), `TextTheme`, `Shapes`, `Elevation`, `Theme`, `material.Of`, `material.App` с режимом темы
+(как в системе / светлая / тёмная), `SystemBars`, тема системы в `MediaQuery`.
+
+Впереди: схема из одного цвета (fromSeed), `Scaffold`, `AppBar`, кнопки (`ElevatedButton`, `TextButton`, `OutlinedButton`,
 `IconButton`, `FloatingActionButton`), `Card`, `ListTile`, `Divider`, `Checkbox`, `Switch`, `Radio`,
 `Slider`, индикаторы прогресса, `SnackBar`, диалоги, `BottomNavigationBar`, `Drawer`, `Navigator`.
 

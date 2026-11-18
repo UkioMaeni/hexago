@@ -332,10 +332,14 @@ func (e *Element) update(w Widget) {
 	case kindInherited:
 		if w.(InheritedWidget).UpdateShouldNotify(old) {
 			for dep := range e.dependents {
-				if dep.kind == kindStateful {
+				switch dep.kind {
+				case kindStateful:
 					if s, ok := dep.live.Interface().(dependenciesChanger); ok {
 						s.DependenciesChanged(dep)
 					}
+				case kindRender:
+					// Бокс берёт данные предка при создании (Text — стиль по умолчанию): обновить его.
+					dep.widget.(RenderObjectWidget).UpdateRenderObject(dep, dep.box)
 				}
 				dep.markNeedsBuild()
 			}

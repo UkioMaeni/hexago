@@ -20,11 +20,16 @@ import (
 func start(root widgets.Widget) {
 	binding := widgets.NewBinding(root)
 	binding.RequestFrame = android.RequestFrame
+	binding.SetSystemBars = android.SetSystemBars
 	binding.SetClock(uiClock{})
 
 	scale := 1.0 // плотность экрана из последнего кадра: касания приходят в пикселях, а нужны dp
 	android.SetDraw(func(f android.Frame) {
 		scale = f.Scale
+		brightness := gfx.Light
+		if f.DarkTheme {
+			brightness = gfx.Dark
+		}
 		c := gfx.NewCanvas(f.Pixels, f.Width, f.Height, f.Stride)
 		c.Clear(gfx.White)
 		binding.DrawFrame(c, widgets.MediaQueryData{
@@ -34,6 +39,7 @@ func start(root widgets.Widget) {
 				Left: float64(f.Insets[0]) / f.Scale, Top: float64(f.Insets[1]) / f.Scale,
 				Right: float64(f.Insets[2]) / f.Scale, Bottom: float64(f.Insets[3]) / f.Scale,
 			},
+			PlatformBrightness: brightness,
 		})
 	})
 	android.SetPointer(func(p android.PointerEvent) {

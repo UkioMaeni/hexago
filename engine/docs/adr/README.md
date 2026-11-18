@@ -25,6 +25,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0017](0017-types-from-own-packages.md) | Каждый тип — из своего пакета; в widgets только виджеты | принято |
 | [0018](0018-state-inside-widget.md) | Состояние — прямо в структуре виджета; Init, Update, DependenciesChanged, Dispose | принято |
 | [0019](0019-touch-input-and-gestures.md) | Касания и жесты: ui/gestures, арена, кадры по запросу | принято |
+| [0020](0020-material3-theme.md) | Тема Material 3: ui/material, стиль текста по умолчанию, тёмная тема системы | принято |
 
 Шаблон нового ADR:
 

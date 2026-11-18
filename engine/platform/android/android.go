@@ -21,18 +21,19 @@ static void hx_string_release(JNIEnv* env, jstring s, const char* chars) {
 // Статические методы HexagoActivity, которые Go вызывает сам: requestFrame и wakeUp.
 static JavaVM* hx_vm;
 static jclass hx_class;
-static jmethodID hx_request_frame_id, hx_wake_up_id;
+static jmethodID hx_request_frame_id, hx_wake_up_id, hx_system_bars_id;
 
 static void hx_init(JNIEnv* env, jclass clazz) {
 	(*env)->GetJavaVM(env, &hx_vm);
 	hx_class = (*env)->NewGlobalRef(env, clazz);
 	hx_request_frame_id = (*env)->GetStaticMethodID(env, clazz, "requestFrame", "()V");
 	hx_wake_up_id = (*env)->GetStaticMethodID(env, clazz, "wakeUp", "()V");
+	hx_system_bars_id = (*env)->GetStaticMethodID(env, clazz, "setSystemBars", "(Z)V");
 }
 
-// hx_call вызывает статический метод из любого потока: чужой поток на время вызова
-// подключается к Java-машине.
-static void hx_call(jmethodID m) {
+// hx_call вызывает статический метод (без аргументов или с одним boolean) из любого потока:
+// чужой поток на время вызова подключается к Java-машине.
+static void hx_call(jmethodID m, jboolean arg) {
 	if (hx_vm == NULL || m == NULL) {
 		return;
 	}
@@ -44,13 +45,14 @@ static void hx_call(jmethodID m) {
 		}
 		attached = 1;
 	}
-	(*env)->CallStaticVoidMethod(env, hx_class, m);
+	(*env)->CallStaticVoidMethod(env, hx_class, m, arg);
 	if (attached) {
 		(*hx_vm)->DetachCurrentThread(hx_vm);
 	}
 }
-static void hx_request_frame(void) { hx_call(hx_request_frame_id); }
-static void hx_wake_up(void) { hx_call(hx_wake_up_id); }
+static void hx_request_frame(void) { hx_call(hx_request_frame_id, JNI_FALSE); }
+static void hx_wake_up(void) { hx_call(hx_wake_up_id, JNI_FALSE); }
+static void hx_system_bars(jboolean light) { hx_call(hx_system_bars_id, light); }
 */
 import "C"
 
@@ -80,6 +82,9 @@ type Frame struct {
 	// Insets — сколько физических пикселей слева, сверху, справа и снизу занимают
 	// системные панели и вырез камеры (приложение рисует под ними).
 	Insets [4]int
+
+	// DarkTheme — в настройках телефона включена тёмная тема.
+	DarkTheme bool
 }
 
 // DrawFunc рисует кадр.
@@ -123,6 +128,16 @@ func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass
 	C.hx_init(env, clazz)
 	setupCrashOutput(goString(env, cacheDir))
 	mainMain()
+}
+
+// SetSystemBars задаёт цвет значков строки состояния и панели навигации:
+// светлые (lightIcons) — для тёмного фона, иначе тёмные. Из любого потока.
+func SetSystemBars(lightIcons bool) {
+	v := C.jboolean(C.JNI_FALSE)
+	if lightIcons {
+		v = C.JNI_TRUE
+	}
+	C.hx_system_bars(v)
 }
 
 // RequestFrame просит Android нарисовать новый кадр на ближайшей развёртке экрана.
@@ -187,7 +202,7 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 
 //export Java_dev_hexago_HexagoActivity_nativeDraw
 func Java_dev_hexago_HexagoActivity_nativeDraw(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat,
-	insetLeft, insetTop, insetRight, insetBottom C.jint) {
+	insetLeft, insetTop, insetRight, insetBottom C.jint, darkTheme C.jboolean) {
 	win := C.ANativeWindow_fromSurface(env, surface)
 	if win == nil {
 		return
@@ -209,11 +224,12 @@ func Java_dev_hexago_HexagoActivity_nativeDraw(env *C.JNIEnv, clazz C.jclass, su
 	}
 	stride, height := int(buf.stride), int(buf.height)
 	draw(Frame{
-		Pixels: unsafe.Slice((*uint32)(buf.bits), stride*height),
-		Width:  int(buf.width),
-		Height: height,
-		Stride: stride,
-		Scale:  float64(density),
-		Insets: [4]int{int(insetLeft), int(insetTop), int(insetRight), int(insetBottom)},
+		Pixels:    unsafe.Slice((*uint32)(buf.bits), stride*height),
+		Width:     int(buf.width),
+		Height:    height,
+		Stride:    stride,
+		Scale:     float64(density),
+		Insets:    [4]int{int(insetLeft), int(insetTop), int(insetRight), int(insetBottom)},
+		DarkTheme: darkTheme != C.JNI_FALSE,
 	})
 }

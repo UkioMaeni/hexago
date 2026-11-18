@@ -40,6 +40,35 @@ type Binding struct {
 
 	arena    gestures.Arena
 	pointers map[int]*pointerTrack // пальцы на экране
+
+	// SetSystemBars вызывается, когда меняется вид системных панелей (виджет SystemBars):
+	// lightIcons — светлые значки для тёмного фона.
+	SetSystemBars func(lightIcons bool)
+	lightIcons    bool
+}
+
+// SystemBars задаёт вид системных панелей (строки состояния и навигации), пока он в дереве:
+// LightIcons — светлые значки, для тёмного фона; по умолчанию значки тёмные. Действует самый
+// внешний SystemBars. Его ставит material.App по яркости темы.
+type SystemBars struct {
+	Base
+	LightIcons bool
+	Child      Widget
+}
+
+func (w SystemBars) ChildWidget() Widget { return w.Child }
+
+// systemBars — самый внешний SystemBars в дереве.
+func systemBars(e *Element) (SystemBars, bool) {
+	if s, ok := e.widget.(SystemBars); ok {
+		return s, true
+	}
+	for _, c := range e.children {
+		if s, ok := systemBars(c); ok {
+			return s, true
+		}
+	}
+	return SystemBars{}, false
 }
 
 // pointerTrack — палец на экране: кому доставлять его события и где он был в прошлый раз.
@@ -135,6 +164,12 @@ func (b *Binding) DrawFrame(c *gfx.Canvas, media MediaQueryData) {
 	}
 	b.owner.BuildScope()
 	SyncRenderTree(b.root)
+	if bars, _ := systemBars(b.root); bars.LightIcons != b.lightIcons {
+		b.lightIcons = bars.LightIcons
+		if b.SetSystemBars != nil {
+			b.SetSystemBars(bars.LightIcons)
+		}
+	}
 
 	// Ошибка лэйаута или отрисовки (например, бесконечная ширина внутри Row) не роняет
 	// приложение: кадр заливается красным, а текст ошибки уходит в лог.

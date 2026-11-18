@@ -107,3 +107,11 @@ func clamp01(v float64) float64 {
 	}
 	return v
 }
+
+// Brightness — светлая или тёмная тема: и тема системы, и тема приложения.
+type Brightness uint8
+
+const (
+	Light Brightness = iota // светлый фон, тёмный текст
+	Dark                    // тёмный фон, светлый текст
+)

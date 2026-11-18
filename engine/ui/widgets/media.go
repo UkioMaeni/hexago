@@ -2,13 +2,15 @@ package widgets
 
 import (
 	"hexago/ui/geom"
+	"hexago/ui/gfx"
 )
 
-// MediaQueryData — сведения об экране: размер в dp, плотность, отступы системных панелей.
+// MediaQueryData — сведения об экране: размер в dp, плотность, отступы системных панелей, тема системы.
 type MediaQueryData struct {
-	Size             geom.Size       // размер экрана в логических пикселях (dp)
-	DevicePixelRatio float64         // физических пикселей в одном dp
-	Padding          geom.EdgeInsets // области, занятые строкой состояния, вырезом, навигацией
+	Size               geom.Size       // размер экрана в логических пикселях (dp)
+	DevicePixelRatio   float64         // физических пикселей в одном dp
+	Padding            geom.EdgeInsets // области, занятые строкой состояния, вырезом, навигацией
+	PlatformBrightness gfx.Brightness  // светлая или тёмная тема в настройках телефона
 }
 
 // MediaQuery передаёт сведения об экране всему поддереву. Его ставит сам движок в корень.

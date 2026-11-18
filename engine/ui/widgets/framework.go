@@ -18,6 +18,7 @@ import (
 	"runtime/debug"
 	"slices"
 
+	"hexago/ui/animation"
 	"hexago/ui/gestures"
 	"hexago/ui/rendering"
 )
@@ -144,16 +145,17 @@ func kindOf(w Widget) kind {
 
 // Element — экземпляр виджета в дереве.
 type Element struct {
-	widget   Widget
-	parent   *Element
-	children []*Element
-	depth    int
-	owner    *BuildOwner
-	kind     kind
-	live     reflect.Value // у виджета с состоянием — живой экземпляр (*ТвойВиджет)
-	box      rendering.Box
-	dirty    bool
-	mounted  bool
+	widget     Widget
+	parent     *Element
+	children   []*Element
+	depth      int
+	owner      *BuildOwner
+	kind       kind
+	live       reflect.Value           // у виджета с состоянием — живой экземпляр (*ТвойВиджет)
+	animations []*animation.Controller // созданы через NewAnimation; останавливаются при удалении
+	box        rendering.Box
+	dirty      bool
+	mounted    bool
 
 	inherited  map[reflect.Type]*Element // видимые отсюда InheritedWidget по типу
 	dependents map[*Element]bool         // у InheritedWidget: кто от него зависит
@@ -192,8 +194,9 @@ func (e *Element) FindBox() rendering.Box {
 
 // BuildOwner управляет перестройками: помнит «грязные» элементы и перестраивает их по порядку.
 type BuildOwner struct {
-	dirty    []*Element
-	gestures gestures.Env // арена и часы для распознавателей жестов (их задаёт Binding)
+	dirty     []*Element
+	gestures  gestures.Env        // арена и часы для распознавателей жестов (их задаёт Binding)
+	scheduler animation.Scheduler // кадры для анимаций (Binding)
 	// OnNeedsBuild вызывается, когда появился первый «грязный» элемент — пора просить кадр.
 	OnNeedsBuild func()
 }
@@ -269,6 +272,10 @@ func (o *BuildOwner) unmount(e *Element) {
 			s.Dispose()
 		}
 	}
+	for _, a := range e.animations {
+		a.Dispose()
+	}
+	e.animations = nil
 	for dep := range e.deps {
 		delete(dep.dependents, e)
 	}

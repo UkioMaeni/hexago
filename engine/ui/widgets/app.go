@@ -3,7 +3,9 @@ package widgets
 import (
 	"fmt"
 	"runtime/debug"
+	"time"
 
+	"hexago/ui/animation"
 	"hexago/ui/geom"
 	"hexago/ui/gestures"
 	"hexago/ui/gfx"
@@ -40,6 +42,7 @@ type Binding struct {
 
 	arena    gestures.Arena
 	pointers map[int]*pointerTrack // пальцы на экране
+	tickers  []animation.Ticker    // идущие анимации
 
 	// SetSystemBars вызывается, когда меняется вид системных панелей (виджет SystemBars):
 	// lightIcons — светлые значки для тёмного фона.
@@ -87,8 +90,35 @@ func NewBinding(app Widget) *Binding {
 		}
 	}}
 	b.owner.gestures = gestures.Env{Arena: &b.arena, Clock: &gestures.FakeClock{}}
+	b.owner.scheduler = b
 	return b
 }
+
+// Animate — для animation.Scheduler: t получает время каждого кадра, пока не закончит.
+func (b *Binding) Animate(t animation.Ticker) {
+	b.tickers = append(b.tickers, t)
+	if b.RequestFrame != nil {
+		b.RequestFrame()
+	}
+}
+
+// Tick — начало кадра: идущие анимации получают время кадра now (отсчёт от включения устройства).
+// Платформа вызывает его перед DrawFrame; пока анимации идут, кадры запрашиваются снова и снова.
+func (b *Binding) Tick(now time.Duration) {
+	active := b.tickers
+	b.tickers = nil
+	for _, t := range active {
+		if t.Tick(now) {
+			b.tickers = append(b.tickers, t)
+		}
+	}
+	if len(b.tickers) > 0 && b.RequestFrame != nil {
+		b.RequestFrame()
+	}
+}
+
+// Animating сообщает, что идут анимации.
+func (b *Binding) Animating() bool { return len(b.tickers) > 0 }
 
 // SetClock задаёт часы для таймеров жестов (долгое и двойное нажатие). app.Run даёт настоящие,
 // чьи таймеры срабатывают в потоке интерфейса; в тестах — gestures.FakeClock (он же по умолчанию).

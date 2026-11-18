@@ -30,6 +30,7 @@ func start(root widgets.Widget) {
 		if f.DarkTheme {
 			brightness = gfx.Dark
 		}
+		binding.Tick(f.Time) // анимации — на время этого кадра
 		c := gfx.NewCanvas(f.Pixels, f.Width, f.Height, f.Stride)
 		c.Clear(gfx.White)
 		binding.DrawFrame(c, widgets.MediaQueryData{

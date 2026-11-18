@@ -38,7 +38,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     // Реализации — в Go, пакет hexago/platform/android.
     private static native void nativeOnCreate(String cacheDir);
     private static native void nativeDraw(Surface surface, float density,
-            int insetLeft, int insetTop, int insetRight, int insetBottom, boolean darkTheme);
+            int insetLeft, int insetTop, int insetRight, int insetBottom, boolean darkTheme, long frameTimeNanos);
     private static native void nativeOnPointer(int kind, int pointer, float x, float y, long timeMillis);
     private static native void nativeRunTasks();
 
@@ -64,7 +64,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
             Choreographer.getInstance().postFrameCallback(frameTimeNanos -> {
                 frameScheduled = false;
                 if (current != null) {
-                    current.redraw();
+                    current.redraw(frameTimeNanos);
                 }
             });
         });
@@ -180,8 +180,17 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     public void surfaceDestroyed(SurfaceHolder holder) {
     }
 
-    /** Передаёт в Go поверхность, плотность и отступы — Go рисует кадр. */
+    /** Перерисовка не по развёртке (поверхность изменилась, сменилась тема): время — сейчас. */
     private void redraw() {
+        redraw(System.nanoTime());
+    }
+
+    /**
+     * Передаёт в Go поверхность, плотность, отступы и время кадра — Go рисует кадр.
+     * Время — наносекунды от включения устройства (как у Choreographer и System.nanoTime):
+     * по нему идут анимации.
+     */
+    private void redraw(long frameTimeNanos) {
         Surface surface = view.getHolder().getSurface();
         if (surface == null || !surface.isValid()) {
             return;
@@ -192,7 +201,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         int[] insets = systemInsets();
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3], dark);
+        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3], dark, frameTimeNanos);
     }
 
     /**

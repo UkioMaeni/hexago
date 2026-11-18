@@ -170,3 +170,43 @@ func paintBorder(c *gfx.Canvas, shape geom.RRect, b *Border) {
 	side(b.Left, geom.Rect{Left: r.Left, Top: r.Top, Right: r.Left + b.Left.Width, Bottom: r.Bottom})
 	side(b.Right, geom.Rect{Left: r.Right - b.Right.Width, Top: r.Top, Right: r.Right, Bottom: r.Bottom})
 }
+
+// LerpBoxDecoration — плавный переход между украшениями: цвет, скругление, рамка и тени
+// интерполируются; то, что так не переходит (разная форма, градиент, разное число теней), меняется
+// на середине пути. nil — «без украшения» (прозрачное).
+func LerpBoxDecoration(a, b *BoxDecoration, t float64) *BoxDecoration {
+	if a == nil && b == nil {
+		return nil
+	}
+	var x, y BoxDecoration
+	if a != nil {
+		x = *a
+	}
+	if b != nil {
+		y = *b
+	}
+	out := y
+	if t < 0.5 {
+		out = x
+	}
+	out.Color = gfx.LerpColor(x.Color, y.Color, t)
+	out.BorderRadius = geom.LerpBorderRadius(x.BorderRadius, y.BorderRadius, t)
+	if x.Border != nil && y.Border != nil {
+		side := func(p, q BorderSide) BorderSide {
+			return BorderSide{Color: gfx.LerpColor(p.Color, q.Color, t), Width: geom.Lerp(p.Width, q.Width, t)}
+		}
+		out.Border = &Border{side(x.Border.Top, y.Border.Top), side(x.Border.Right, y.Border.Right),
+			side(x.Border.Bottom, y.Border.Bottom), side(x.Border.Left, y.Border.Left)}
+	}
+	if len(x.BoxShadow) == len(y.BoxShadow) && len(x.BoxShadow) > 0 {
+		out.BoxShadow = make([]BoxShadow, len(x.BoxShadow))
+		for i := range x.BoxShadow {
+			p, q := x.BoxShadow[i], y.BoxShadow[i]
+			out.BoxShadow[i] = BoxShadow{
+				Color: gfx.LerpColor(p.Color, q.Color, t), Offset: geom.LerpOffset(p.Offset, q.Offset, t),
+				BlurRadius: geom.Lerp(p.BlurRadius, q.BlurRadius, t), SpreadRadius: geom.Lerp(p.SpreadRadius, q.SpreadRadius, t),
+			}
+		}
+	}
+	return &out
+}

@@ -289,3 +289,27 @@ func (m Affine) MapRect(r Rect) Rect {
 
 // Lerp — линейная интерполяция между a и b: t=0 → a, t=1 → b.
 func Lerp(a, b, t float64) float64 { return a + (b-a)*t }
+
+// LerpOffset — интерполяция точек: t=0 → a, t=1 → b.
+func LerpOffset(a, b Offset, t float64) Offset { return Offset{Lerp(a.X, b.X, t), Lerp(a.Y, b.Y, t)} }
+
+// LerpSize — интерполяция размеров.
+func LerpSize(a, b Size, t float64) Size {
+	return Size{Lerp(a.Width, b.Width, t), Lerp(a.Height, b.Height, t)}
+}
+
+// LerpEdgeInsets — интерполяция отступов.
+func LerpEdgeInsets(a, b EdgeInsets, t float64) EdgeInsets {
+	return EdgeInsets{Lerp(a.Left, b.Left, t), Lerp(a.Top, b.Top, t), Lerp(a.Right, b.Right, t), Lerp(a.Bottom, b.Bottom, t)}
+}
+
+// LerpAlignment — интерполяция выравниваний.
+func LerpAlignment(a, b Alignment, t float64) Alignment {
+	return Alignment{Lerp(a.X, b.X, t), Lerp(a.Y, b.Y, t)}
+}
+
+// LerpBorderRadius — интерполяция скруглений, по каждому углу.
+func LerpBorderRadius(a, b BorderRadius, t float64) BorderRadius {
+	r := func(p, q Radius) Radius { return Radius{Lerp(p.X, q.X, t), Lerp(p.Y, q.Y, t)} }
+	return BorderRadius{r(a.TopLeft, b.TopLeft), r(a.TopRight, b.TopRight), r(a.BottomRight, b.BottomRight), r(a.BottomLeft, b.BottomLeft)}
+}

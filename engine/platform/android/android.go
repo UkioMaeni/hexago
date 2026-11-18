@@ -85,6 +85,9 @@ type Frame struct {
 
 	// DarkTheme — в настройках телефона включена тёмная тема.
 	DarkTheme bool
+
+	// Time — время кадра от включения устройства: по нему идут анимации.
+	Time time.Duration
 }
 
 // DrawFunc рисует кадр.
@@ -202,7 +205,7 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 
 //export Java_dev_hexago_HexagoActivity_nativeDraw
 func Java_dev_hexago_HexagoActivity_nativeDraw(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat,
-	insetLeft, insetTop, insetRight, insetBottom C.jint, darkTheme C.jboolean) {
+	insetLeft, insetTop, insetRight, insetBottom C.jint, darkTheme C.jboolean, frameTimeNanos C.jlong) {
 	win := C.ANativeWindow_fromSurface(env, surface)
 	if win == nil {
 		return
@@ -231,5 +234,6 @@ func Java_dev_hexago_HexagoActivity_nativeDraw(env *C.JNIEnv, clazz C.jclass, su
 		Scale:     float64(density),
 		Insets:    [4]int{int(insetLeft), int(insetTop), int(insetRight), int(insetBottom)},
 		DarkTheme: darkTheme != C.JNI_FALSE,
+		Time:      time.Duration(frameTimeNanos),
 	})
 }

@@ -28,7 +28,7 @@ PNG-эталоны для проверки без устройства.
 
 ## P3 — Ядро фреймворка ✅
 
-Widget → Element → RenderObject: `StatelessWidget`, `StatefulWidget` + `SetState`, `BuildContext`,
+Widget → Element → RenderObject: `StatelessWidget`, состояние в структуре виджета (`widgets.State`, `SetState`, Init, Update, Dispose — ADR-0018), `BuildContext`,
 наследуемые данные (`DependOn`), ключи, render-дерево с `BoxConstraints`, лэйаут, отрисовка, hit-test.
 
 ## P4 — Виджеты раскладки 🔨

@@ -8,7 +8,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 |---|---|---|
 | [0001](0001-own-rendering.md) | Рисуем каждый пиксель сами | принято |
 | [0002](0002-three-trees.md) | Три дерева: Widget → Element → RenderObject | принято |
-| [0003](0003-go-idioms-instead-of-inheritance.md) | Go-идиомы вместо наследования; API виджетов | принято, есть открытые вопросы |
+| [0003](0003-go-idioms-instead-of-inheritance.md) | Go-идиомы вместо наследования; API виджетов | принято; модель состояния заменена ADR-0018 |
 | [0004](0004-rendering-pipeline.md) | Canvas → DisplayList → Scene → сменный растеризатор; CPU первым | принято |
 | [0005](0005-threading-and-runners.md) | Потоки и раннеры; однопоточный framework | принято |
 | [0006](0006-text-stack.md) | Текст: go-text для шейпинга, своя вёрстка абзаца | принято |
@@ -23,6 +23,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0015](0015-hexago-rebuilds-itself.md) | hexago пересобирает себя, когда меняются его исходники | принято |
 | [0016](0016-run-from-vscode-debugger.md) | Запуск из VS Code через Run → Start Debugging; точки останова — позже | принято |
 | [0017](0017-types-from-own-packages.md) | Каждый тип — из своего пакета; в widgets только виджеты | принято |
+| [0018](0018-state-inside-widget.md) | Состояние — прямо в структуре виджета; Init, Update, DependenciesChanged, Dispose | принято |
 
 Шаблон нового ADR:
 

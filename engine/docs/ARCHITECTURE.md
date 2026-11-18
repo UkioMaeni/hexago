@@ -168,33 +168,29 @@ func Layout(r RenderBox, c BoxConstraints, parentUsesSize bool) geom.Size {
 }
 ```
 
-API виджетов — struct-литералы вместо именованных параметров Dart:
+API виджетов — struct-литералы вместо именованных параметров Dart. Состояние живёт прямо в структуре
+виджета ([ADR-0018](adr/0018-state-inside-widget.md)):
 
 ```go
 type Counter struct {
-	widgets.Stateful // «вид» виджета; без него тип не станет Widget
-	Start int
+	widgets.State // вместо widgets.Base: у виджета есть своё состояние
+
+	Title string // с большой буквы — параметр от родителя
+	count int    // с маленькой — своё состояние, живёт между перестройками
 }
 
-func (c *Counter) CreateState() widgets.State { return &counterState{} }
+func (c *Counter) Init(ctx widgets.BuildContext) { c.count = 10 }
 
-type counterState struct {
-	widgets.StateBase[*Counter] // Widget(), SetState(), Context(), Mounted()
-	n int
-}
-
-func (s *counterState) InitState() { s.n = s.Widget().Start }
-
-func (s *counterState) Build(ctx widgets.BuildContext) widgets.Widget {
-	return &widgets.GestureDetector{
-		OnTap: func() { s.SetState(func() { s.n++ }) },
-		Child: &widgets.Center{
-			Child: &widgets.Text{Data: strconv.Itoa(s.n)},
+func (c *Counter) Build(ctx widgets.BuildContext) widgets.Widget {
+	return widgets.GestureDetector{
+		OnTap: func() { c.SetState(func() { c.count++ }) },
+		Child: widgets.Center{
+			Child: widgets.Text{Data: fmt.Sprint(c.Title, ": ", c.count)},
 		},
 	}
 }
 
-func main() { app.Run(&Counter{Start: 0}) }
+func main() { app.Run(widgets.App{Home: Counter{Title: "Нажатия"}}) }
 ```
 
 ## 7. Рендеринг

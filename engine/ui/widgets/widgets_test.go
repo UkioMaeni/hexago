@@ -89,27 +89,21 @@ func TestFlexDividesSpace(t *testing.T) {
 	}
 }
 
-// tracked — StatefulWidget, состояние которого запоминает свой порядковый номер.
+// tracked — виджет с состоянием, который запоминает свой порядковый номер.
 type tracked struct {
-	w.Base
+	w.State
 	Name string
+	id   int
 }
 
 var created int
 
-func (tracked) CreateState() w.State { return &trackedState{} }
-
-type trackedState struct {
-	w.StateOf[tracked]
-	id int
-}
-
-func (s *trackedState) InitState() {
+func (s *tracked) Init(w.BuildContext) {
 	created++
 	s.id = created
 }
 
-func (s *trackedState) Build(w.BuildContext) w.Widget { return w.SizedBox{} }
+func (s *tracked) Build(w.BuildContext) w.Widget { return w.SizedBox{} }
 
 func TestKeysPreserveStateOnReorder(t *testing.T) {
 	created = 0
@@ -124,8 +118,8 @@ func TestKeysPreserveStateOnReorder(t *testing.T) {
 		out := map[string]int{}
 		var walk func(e *w.Element)
 		walk = func(e *w.Element) {
-			if s, ok := e.State().(*trackedState); ok {
-				out[s.Widget().Name] = s.id
+			if s, ok := e.State().(*tracked); ok {
+				out[s.Name] = s.id
 			}
 			for _, c := range e.Children() {
 				walk(c)

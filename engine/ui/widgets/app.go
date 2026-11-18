@@ -38,15 +38,15 @@ type Binding struct {
 	RequestFrame func()
 }
 
-// NewBinding монтирует дерево приложения.
+// NewBinding готовит дерево приложения. Строится оно в первом кадре, когда уже известен
+// размер экрана, — иначе всё дерево строилось бы дважды.
 func NewBinding(app Widget) *Binding {
-	b := &Binding{app: app, media: MediaQueryData{DevicePixelRatio: 1}}
+	b := &Binding{app: app}
 	b.owner = &BuildOwner{OnNeedsBuild: func() {
 		if b.RequestFrame != nil {
 			b.RequestFrame()
 		}
 	}}
-	b.root = b.owner.Mount(b.rootWidget())
 	return b
 }
 
@@ -58,10 +58,12 @@ func (b *Binding) rootWidget() Widget {
 // дерево перестроится в следующем кадре с сохранением состояний.
 func (b *Binding) SetApp(app Widget) {
 	b.app = app
-	b.owner.Update(b.root, b.rootWidget())
+	if b.root != nil {
+		b.owner.Update(b.root, b.rootWidget())
+	}
 }
 
-// Root — корневой элемент дерева.
+// Root — корневой элемент дерева (nil до первого кадра).
 func (b *Binding) Root() *Element { return b.root }
 
 // DrawFrame рисует кадр: перестраивает изменившиеся виджеты, раскладывает дерево
@@ -70,7 +72,11 @@ func (b *Binding) DrawFrame(c *gfx.Canvas, media MediaQueryData) {
 	if media.DevicePixelRatio <= 0 {
 		media.DevicePixelRatio = 1
 	}
-	if media != b.media {
+	switch {
+	case b.root == nil:
+		b.media = media
+		b.root = b.owner.Mount(b.rootWidget())
+	case media != b.media:
 		b.media = media
 		b.owner.Update(b.root, b.rootWidget())
 	}
@@ -96,6 +102,8 @@ func (b *Binding) DrawFrame(c *gfx.Canvas, media MediaQueryData) {
 // HitTest находит боксы под точкой pos (в dp) — от самого глубокого к корню.
 func (b *Binding) HitTest(pos geom.Offset) rendering.HitTestResult {
 	var r rendering.HitTestResult
-	rendering.HitTest(b.root.box, &r, pos)
+	if b.root != nil {
+		rendering.HitTest(b.root.box, &r, pos)
+	}
 	return r
 }

@@ -2,13 +2,13 @@
 //
 // Три дерева (ADR-0002):
 //   - Widget — неизменяемое описание, создаётся заново при каждом построении;
-//   - Element — экземпляр виджета в дереве: живёт долго, хранит State, решает,
+//   - Element — экземпляр виджета в дереве: живёт долго, хранит состояние виджета, решает,
 //     обновить существующее поддерево или пересоздать его;
 //   - rendering.Box — геометрия: лэйаут, отрисовка, касания.
 //
 // Вид виджета определяется методами, которые он реализует:
-//   - Build(ctx) Widget — StatelessWidget, строится из других виджетов;
-//   - CreateState() State — StatefulWidget, со своим изменяемым состоянием;
+//   - Build(ctx) Widget — виджет строится из других виджетов;
+//   - встроен State вместо Base — у виджета своё изменяемое состояние (см. State);
 //   - CreateRenderObject / UpdateRenderObject — виджет с собственным render-боксом.
 package widgets
 
@@ -44,64 +44,6 @@ type StatelessWidget interface {
 	Widget
 	Build(ctx BuildContext) Widget
 }
-
-// StatefulWidget — виджет со своим изменяемым состоянием (State живёт между перестройками).
-type StatefulWidget interface {
-	Widget
-	CreateState() State
-}
-
-// State — состояние StatefulWidget. Реализация встраивает StateOf[ТвойВиджет]
-// и пишет метод Build. По желанию — InitState, DidUpdateWidget, Dispose.
-type State interface {
-	Build(ctx BuildContext) Widget
-	base() *StateBase
-}
-
-// StateBase — общая часть любого состояния.
-type StateBase struct {
-	element *Element
-}
-
-func (s *StateBase) base() *StateBase { return s }
-
-// SetState меняет состояние и перестраивает виджет в следующем кадре, как setState во Flutter.
-func (s *StateBase) SetState(fn func()) {
-	if fn != nil {
-		fn()
-	}
-	if s.element == nil || !s.element.mounted {
-		panic("widgets: SetState вызван у состояния, которое уже удалено из дерева (после Dispose)")
-	}
-	s.element.markNeedsBuild()
-}
-
-// Context — контекст виджета этого состояния.
-func (s *StateBase) Context() BuildContext { return s.element }
-
-// Mounted сообщает, что состояние всё ещё в дереве.
-func (s *StateBase) Mounted() bool { return s.element != nil && s.element.mounted }
-
-// StateOf — база состояния, знающая тип своего виджета:
-//
-//	type counterState struct {
-//		widgets.StateOf[Counter]
-//		count int
-//	}
-type StateOf[W Widget] struct {
-	StateBase
-}
-
-// Widget возвращает текущий виджет этого состояния.
-func (s *StateOf[W]) Widget() W { return s.element.widget.(W) }
-
-// Необязательные методы жизненного цикла состояния.
-type (
-	initStater          interface{ InitState() }
-	didUpdateWidgeter   interface{ DidUpdateWidget(old Widget) }
-	disposer            interface{ Dispose() }
-	didChangeDependency interface{ DidChangeDependencies() }
-)
 
 // RenderObjectWidget — виджет со своим render-боксом. Детей он отдаёт через
 // ChildWidget() (один ребёнок) или ChildWidgets() (несколько).
@@ -175,11 +117,17 @@ const (
 )
 
 func kindOf(w Widget) kind {
+	t := reflect.TypeOf(w)
+	if t.Kind() == reflect.Pointer && isStateful(t.Elem()) {
+		panic(fmt.Sprintf("widgets: виджет с состоянием передают значением: %s{...}, а не &%s{...}",
+			t.Elem().Name(), t.Elem().Name()))
+	}
+	if isStateful(t) {
+		return kindStateful
+	}
 	switch w.(type) {
 	case RenderObjectWidget:
 		return kindRender
-	case StatefulWidget:
-		return kindStateful
 	case StatelessWidget:
 		return kindStateless
 	case InheritedWidget:
@@ -189,7 +137,7 @@ func kindOf(w Widget) kind {
 	case SingleChildWidget:
 		return kindProxy
 	}
-	panic(fmt.Sprintf("widgets: тип %T встроил widgets.Base, но у него нет ни Build, ни CreateState, "+
+	panic(fmt.Sprintf("widgets: тип %T встроил widgets.Base, но у него нет ни Build, "+
 		"ни CreateRenderObject — непонятно, как его строить", w))
 }
 
@@ -201,7 +149,7 @@ type Element struct {
 	depth    int
 	owner    *BuildOwner
 	kind     kind
-	state    State
+	live     reflect.Value // у виджета с состоянием — живой экземпляр (*ТвойВиджет)
 	box      rendering.Box
 	dirty    bool
 	mounted  bool
@@ -216,8 +164,13 @@ func (e *Element) Widget() Widget { return e.widget }
 
 func (e *Element) element() *Element { return e }
 
-// State — состояние элемента StatefulWidget (nil у остальных).
-func (e *Element) State() State { return e.state }
+// State — живой экземпляр виджета с состоянием (*ТвойВиджет); nil у остальных виджетов.
+func (e *Element) State() Widget {
+	if !e.live.IsValid() {
+		return nil
+	}
+	return e.live.Interface().(Widget)
+}
 
 // Children — дочерние элементы.
 func (e *Element) Children() []*Element { return e.children }
@@ -297,14 +250,7 @@ func (o *BuildOwner) mount(parent *Element, w Widget) *Element {
 		e.inherited = m
 		e.dependents = map[*Element]bool{}
 	case kindStateful:
-		e.state = w.(StatefulWidget).CreateState()
-		e.state.base().element = e
-		if s, ok := e.state.(initStater); ok {
-			s.InitState()
-		}
-		if s, ok := e.state.(didChangeDependency); ok {
-			s.DidChangeDependencies()
-		}
+		e.mountState()
 	case kindRender:
 		e.box = w.(RenderObjectWidget).CreateRenderObject(e)
 	}
@@ -317,7 +263,7 @@ func (o *BuildOwner) unmount(e *Element) {
 		o.unmount(c)
 	}
 	if e.kind == kindStateful {
-		if s, ok := e.state.(disposer); ok {
+		if s, ok := e.live.Interface().(disposer); ok {
 			s.Dispose()
 		}
 	}
@@ -335,7 +281,7 @@ func (e *Element) rebuild() {
 	case kindStateless:
 		e.updateSingle(e.safeBuild(func() Widget { return e.widget.(StatelessWidget).Build(e) }))
 	case kindStateful:
-		e.updateSingle(e.safeBuild(func() Widget { return e.state.Build(e) }))
+		e.updateSingle(e.safeBuild(func() Widget { return e.live.Interface().(builder).Build(e) }))
 	case kindRender:
 		switch w := e.widget.(type) {
 		case MultiChildWidget:
@@ -378,16 +324,16 @@ func (e *Element) update(w Widget) {
 	e.widget = w
 	switch e.kind {
 	case kindStateful:
-		if s, ok := e.state.(didUpdateWidgeter); ok {
-			s.DidUpdateWidget(old)
-		}
+		e.updateState(w)
 	case kindRender:
 		w.(RenderObjectWidget).UpdateRenderObject(e, e.box)
 	case kindInherited:
 		if w.(InheritedWidget).UpdateShouldNotify(old) {
 			for dep := range e.dependents {
-				if s, ok := dep.state.(didChangeDependency); ok {
-					s.DidChangeDependencies()
+				if dep.kind == kindStateful {
+					if s, ok := dep.live.Interface().(dependenciesChanger); ok {
+						s.DependenciesChanged(dep)
+					}
 				}
 				dep.markNeedsBuild()
 			}

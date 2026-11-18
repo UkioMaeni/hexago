@@ -102,3 +102,9 @@ func (s Clamped) Done(t float64) bool {
 	x := s.Sim.X(t)
 	return s.Sim.Done(t) || x <= s.Min || x >= s.Max
 }
+
+// TweenSimulation — движение от from к to за d по кривой curve, как Simulation: так прокрутка плавно
+// едет к нужному месту (ScrollController.AnimateTo, доводка страницы PageView).
+func TweenSimulation(from, to float64, d time.Duration, curve Curve) Simulation {
+	return newTween(from, to, d, curve)
+}

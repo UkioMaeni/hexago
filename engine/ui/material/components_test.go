@@ -45,7 +45,7 @@ func screenSample() widgets.Widget {
 			}}},
 			widgets.Padding{Padding: geom.Symmetric(4, 0), Child: Slider{Value: 0.4, OnChanged: func(float64) {}}},
 			widgets.Padding{Padding: geom.Symmetric(16, 8), Child: widgets.Row{Spacing: 16, Children: []widgets.Widget{
-				widgets.Expanded{Child: LinearProgressIndicator{Value: 0.6}}, CircularProgressIndicator{Value: 0.7},
+				widgets.Expanded{Child: LinearProgressIndicator{Value: new(0.6)}}, CircularProgressIndicator{Value: new(0.7)},
 			}}},
 		}},
 		FloatingActionButton: FloatingActionButton{Icon: icons.Edit, Label: "Написать", OnPressed: noop},

@@ -1,6 +1,10 @@
 package material
 
 import (
+	"math"
+	"time"
+
+	"hexago/ui/animation"
 	"hexago/ui/geom"
 	"hexago/ui/gestures"
 	"hexago/ui/gfx"
@@ -69,19 +73,30 @@ const (
 	DisabledSurface = 0.12 // фон выключенного элемента (цвет OnSurface)
 )
 
-// InkWell делает область нажимаемой и показывает подложку нажатия — полупрозрачный слой цвета
-// OverlayColor поверх содержимого, как state layer в Material 3. Волна (ripple) появится вместе с анимациями.
-// Без обработчиков InkWell выключен и касаний не ловит.
+// RippleOpacity — прозрачность волны нажатия (цвет — как у подложки).
+const RippleOpacity = 0.12
+
+// InkWell делает область нажимаемой и показывает нажатие, как в Material 3: полупрозрачную подложку
+// цвета OverlayColor поверх содержимого и волну — круг, который расходится из точки касания и гаснет,
+// когда палец отпущен. Всё обрезается по форме Radius. Без обработчиков InkWell выключен и касаний не ловит.
 type InkWell struct {
 	widgets.State
 	OnTap        func()
 	OnLongPress  func()
 	OnDoubleTap  func()
-	Radius       float64   // форма подложки
-	OverlayColor gfx.Color // цвет подложки; прозрачный — OnSurface темы
+	Radius       float64   // форма подложки и волны
+	OverlayColor gfx.Color // цвет подложки и волны; прозрачный — OnSurface темы
 	Child        widgets.Widget
 
 	pressed bool
+	origin  geom.Offset           // откуда идёт волна
+	grow    *animation.Controller // радиус волны: 0…1 от наибольшего
+	fade    *animation.Controller // видимость волны: 1 → 0 после отпускания
+}
+
+func (w *InkWell) Init(ctx widgets.BuildContext) {
+	w.grow = widgets.NewAnimation(ctx, 300*time.Millisecond)
+	w.fade = widgets.NewAnimation(ctx, 250*time.Millisecond)
 }
 
 // Форма дерева под InkWell не зависит ни от нажатия, ни от того, включён ли он: иначе содержимое
@@ -95,36 +110,51 @@ func (w *InkWell) Build(ctx widgets.BuildContext) widgets.Widget {
 	if overlay.IsTransparent() {
 		overlay = Of(ctx).Colors.OnSurface
 	}
-	layer := gfx.Transparent
-	if w.pressed {
-		layer = overlay.WithOpacity(PressedOpacity)
-	}
-	press := func(p bool) {
-		if w.Mounted() && w.pressed != p {
-			w.SetState(func() { w.pressed = p })
+	pressed, origin := w.pressed, w.origin
+	grow, fade := w.grow.Value(), w.fade.Value()
+	paint := func(c *gfx.Canvas, s geom.Size) {
+		rr := geom.RRect{Rect: geom.RectFromSize(geom.Zero, s), Radius: geom.RadiusAll(w.Radius)}.Clamped()
+		if pressed {
+			c.DrawRRect(rr, gfx.Paint{Color: overlay.WithOpacity(PressedOpacity)})
+		}
+		if fade > 0 && grow > 0 {
+			// Наибольший радиус — до самого дальнего угла.
+			far := 0.0
+			for _, p := range []geom.Offset{{}, {X: s.Width}, {Y: s.Height}, {X: s.Width, Y: s.Height}} {
+				far = math.Max(far, p.Sub(origin).Distance())
+			}
+			c.ClipRRect(rr)
+			c.DrawCircle(origin, grow*far, gfx.Paint{Color: overlay.WithOpacity(RippleOpacity * fade)})
 		}
 	}
 	d := widgets.GestureDetector{
 		Behavior: rendering.DeferToChild,
-		Child: widgets.DecoratedBox{
-			Position:   widgets.DecorationForeground,
-			Decoration: painting.BoxDecoration{Color: layer, BorderRadius: geom.RadiusAll(w.Radius)},
-			Child:      w.Child,
-		},
+		Child:    widgets.CustomPaint{Foreground: paint, Child: w.Child},
 	}
 	if !enabled {
 		return d
 	}
+	down := func(at geom.Offset) {
+		w.SetState(func() { w.pressed, w.origin = true, at })
+		w.grow.SetValue(0)
+		w.grow.AnimateTo(1, 0, animation.Standard)
+		w.fade.SetValue(1)
+	}
+	up := func() {
+		if w.Mounted() && w.pressed {
+			w.SetState(func() { w.pressed = false })
+		}
+		w.fade.AnimateTo(0, 0, animation.Linear)
+	}
 	d.Behavior = rendering.Opaque
-	d.OnTapDown = func(gestures.TapDownDetails) { press(true) }
-	d.OnTapUp = func(gestures.TapUpDetails) { press(false) }
-	d.OnTapCancel = func() { press(false) }
+	d.OnTapDown = func(e gestures.TapDownDetails) { down(e.Local) }
+	d.OnTapUp = func(gestures.TapUpDetails) { up() }
+	d.OnTapCancel = up
 	d.OnTap = w.OnTap
 	d.OnDoubleTap = w.OnDoubleTap
 	if w.OnLongPress != nil {
-		d.OnLongPressStart = func(gestures.LongPressStartDetails) { press(true) }
 		d.OnLongPress = w.OnLongPress
-		d.OnLongPressUp = func() { press(false) }
+		d.OnLongPressUp = up
 	}
 	return d
 }

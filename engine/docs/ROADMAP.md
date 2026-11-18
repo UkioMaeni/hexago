@@ -85,9 +85,13 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 и тёмная), `TextTheme`, `Shapes`, `Elevation`, `Theme`, `material.Of`, `material.App` с режимом темы
 (как в системе / светлая / тёмная), `SystemBars`, тема системы в `MediaQuery`.
 
-Впереди: схема из одного цвета (fromSeed), `Scaffold`, `AppBar`, кнопки (`ElevatedButton`, `TextButton`, `OutlinedButton`,
-`IconButton`, `FloatingActionButton`), `Card`, `ListTile`, `Divider`, `Checkbox`, `Switch`, `Radio`,
-`Slider`, индикаторы прогресса, `SnackBar`, диалоги, `BottomNavigationBar`, `Drawer`, `Navigator`.
+Готово ([ADR-0021](adr/0021-material-components.md)): значки (пути SVG, `ui/icons` — 50 значков Material, `Icon`,
+`IconTheme`), `Material`, `InkWell` (подложка нажатия), кнопки `FilledButton`, `FilledTonalButton`, `ElevatedButton`,
+`OutlinedButton`, `TextButton`, `IconButton`, `FloatingActionButton`, `Card`, `Divider`, `ListTile`, `Checkbox`,
+`Radio`, `Switch`, `Slider`, индикаторы прогресса (с Value), `Scaffold`, `AppBar`, `NavigationBar`.
+
+Впереди: волна нажатия и плавные переключения (с анимациями), схема из одного цвета (fromSeed), `SnackBar`,
+диалоги, `Drawer`, `Navigator`, меню, чипы, вкладки.
 
 ## P8 — Ввод текста и изображения ⏳
 

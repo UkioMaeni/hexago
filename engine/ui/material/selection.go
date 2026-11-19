@@ -115,7 +115,7 @@ func (b Switch) Build(ctx widgets.BuildContext) widgets.Widget {
 	if !enabled {
 		offTrack, offOutline, offThumb = c.SurfaceContainerHighest.WithOpacity(DisabledSurface),
 			c.OnSurface.WithOpacity(DisabledSurface), c.OnSurface.WithOpacity(DisabledContent)
-		onTrack, onOutline, onThumb = c.OnSurface.WithOpacity(DisabledSurface), c.OnSurface.WithOpacity(DisabledSurface), c.Surface
+		onTrack, onOutline, onThumb = c.OnSurface.WithOpacity(DisabledSurface), gfx.Transparent, c.Surface
 	}
 	target := 0.0
 	if b.Value {

@@ -258,6 +258,7 @@ func (o *BuildOwner) mount(parent *Element, w Widget) *Element {
 		e.mountState()
 	case kindRender:
 		e.box = w.(RenderObjectWidget).CreateRenderObject(e)
+		rendering.MarkNeedsPaint(e.box)
 	}
 	e.rebuild()
 	return e
@@ -335,7 +336,9 @@ func (e *Element) update(w Widget) {
 	case kindStateful:
 		e.updateState(w)
 	case kindRender:
+		snap := rendering.Snapshot(e.box)
 		w.(RenderObjectWidget).UpdateRenderObject(e, e.box)
+		rendering.MarkIfChanged(e.box, snap)
 	case kindInherited:
 		if w.(InheritedWidget).UpdateShouldNotify(old) {
 			for dep := range e.dependents {
@@ -346,7 +349,9 @@ func (e *Element) update(w Widget) {
 					}
 				case kindRender:
 					// Бокс берёт данные предка при создании (Text — стиль по умолчанию): обновить его.
+					snap := rendering.Snapshot(dep.box)
 					dep.widget.(RenderObjectWidget).UpdateRenderObject(dep, dep.box)
+					rendering.MarkIfChanged(dep.box, snap)
 				}
 				dep.markNeedsBuild()
 			}
@@ -448,9 +453,20 @@ func (e *Element) renderDescendants(out []rendering.Box) []rendering.Box {
 // SyncRenderTree связывает render-боксы так же, как связаны элементы:
 // детьми бокса становятся ближайшие боксы под его элементом.
 // Заодно ParentDataWidget (Expanded, Positioned) передают данные своим боксам.
-func SyncRenderTree(e *Element) {
+func SyncRenderTree(e *Element) { syncRenderTree(e, nil) }
+
+// syncRenderTree — то же; removed получает боксы, которые ушли из дерева (их место надо перерисовать).
+func syncRenderTree(e *Element, removed func(rendering.Box)) {
 	if e.box != nil {
-		rendering.SetChildren(e.box, e.renderDescendants(nil))
+		next := e.renderDescendants(nil)
+		if removed != nil {
+			for _, old := range rendering.Children(e.box) {
+				if !slices.Contains(next, old) {
+					removed(old)
+				}
+			}
+		}
+		rendering.SetChildren(e.box, next)
 	}
 	if e.kind == kindParentData {
 		if b := e.FindBox(); b != nil {
@@ -458,6 +474,6 @@ func SyncRenderTree(e *Element) {
 		}
 	}
 	for _, c := range e.children {
-		SyncRenderTree(c)
+		syncRenderTree(c, removed)
 	}
 }

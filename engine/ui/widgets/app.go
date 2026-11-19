@@ -2,6 +2,8 @@ package widgets
 
 import (
 	"fmt"
+	"image"
+	"math"
 	"runtime/debug"
 	"time"
 
@@ -48,6 +50,9 @@ type Binding struct {
 	// lightIcons — светлые значки для тёмного фона.
 	SetSystemBars func(lightIcons bool)
 	lightIcons    bool
+
+	failed    any  // ошибка раскладки этого кадра (кадр заливается красным)
+	wasFailed bool // прошлый кадр был с ошибкой: следующий рисуется целиком
 }
 
 // SystemBars задаёт вид системных панелей (строки состояния и навигации), пока он в дереве:
@@ -178,22 +183,39 @@ func (b *Binding) SetApp(app Widget) {
 // Root — корневой элемент дерева (nil до первого кадра).
 func (b *Binding) Root() *Element { return b.root }
 
-// DrawFrame рисует кадр: перестраивает изменившиеся виджеты, раскладывает дерево
-// под размер экрана media.Size (в dp) и рисует его на холсте в физических пикселях.
+// DrawFrame рисует кадр целиком: Layout, затем Paint всего холста. Так рисуют тесты; платформа
+// вызывает Layout и Paint по отдельности, чтобы перерисовывать только изменившееся.
 func (b *Binding) DrawFrame(c *gfx.Canvas, media MediaQueryData) {
+	b.Layout(media)
+	b.Paint(c, image.Rect(0, 0, c.Width(), c.Height()))
+}
+
+// errorColor — цвет кадра, если раскладка или отрисовка упали.
+var errorColor = gfx.ARGB(0xFFD32F2F)
+
+// Layout строит изменившиеся виджеты и раскладывает дерево под размер экрана media.Size (dp).
+// Возвращает, какую часть экрана (в физических пикселях) нужно перерисовать: пустой прямоугольник —
+// ничего не изменилось, кадр можно не рисовать.
+func (b *Binding) Layout(media MediaQueryData) image.Rectangle {
 	if media.DevicePixelRatio <= 0 {
 		media.DevicePixelRatio = 1
 	}
+	full := false
 	switch {
 	case b.root == nil:
-		b.media = media
+		b.media, full = media, true
 		b.root = b.owner.Mount(b.rootWidget())
 	case media != b.media:
-		b.media = media
+		b.media, full = media, true
 		b.owner.Update(b.root, b.rootWidget())
 	}
 	b.owner.BuildScope()
-	SyncRenderTree(b.root)
+	var removed geom.Rect
+	syncRenderTree(b.root, func(old rendering.Box) {
+		if r, ok := rendering.PrevBounds(old); ok {
+			removed = union(removed, r)
+		}
+	})
 	if bars, _ := systemBars(b.root); bars.LightIcons != b.lightIcons {
 		b.lightIcons = bars.LightIcons
 		if b.SetSystemBars != nil {
@@ -201,20 +223,69 @@ func (b *Binding) DrawFrame(c *gfx.Canvas, media MediaQueryData) {
 		}
 	}
 
-	// Ошибка лэйаута или отрисовки (например, бесконечная ширина внутри Row) не роняет
-	// приложение: кадр заливается красным, а текст ошибки уходит в лог.
+	screen := image.Rect(0, 0, int(math.Ceil(media.Size.Width*media.DevicePixelRatio)),
+		int(math.Ceil(media.Size.Height*media.DevicePixelRatio)))
+	b.failed = nil
+	// Ошибка раскладки (например, бесконечная ширина внутри Row) не роняет приложение:
+	// кадр заливается красным, а текст ошибки уходит в лог.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				b.failed = r
+				fmt.Printf("Ошибка лэйаута: %v\n%s\n", r, debug.Stack())
+			}
+		}()
+		rendering.Layout(b.root.box, rendering.Tight(media.Size))
+	}()
+	if b.failed != nil || full || b.wasFailed {
+		b.wasFailed = b.failed != nil
+		rendering.CollectDamage(b.root.box) // запомнить границы на будущее
+		return screen
+	}
+	damage := union(rendering.CollectDamage(b.root.box), removed)
+	if damage.IsEmpty() {
+		return image.Rectangle{}
+	}
+	k := media.DevicePixelRatio
+	return image.Rect(int(math.Floor(damage.Left*k)), int(math.Floor(damage.Top*k)),
+		int(math.Ceil(damage.Right*k)), int(math.Ceil(damage.Bottom*k))).Intersect(screen)
+}
+
+// Paint рисует кадр на холсте внутри area (физические пиксели); за её пределами холст не меняется.
+// area может быть больше того, что вернул Layout (платформа иногда просит перерисовать больше).
+func (b *Binding) Paint(c *gfx.Canvas, area image.Rectangle) {
+	if area.Empty() || b.root == nil {
+		return
+	}
+	if b.failed != nil {
+		c.ClearRect(area, errorColor)
+		return
+	}
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Ошибка лэйаута или отрисовки: %v\n%s\n", r, debug.Stack())
-			c.Clear(gfx.ARGB(0xFFD32F2F))
+			fmt.Printf("Ошибка отрисовки: %v\n%s\n", r, debug.Stack())
+			c.ClearRect(area, errorColor)
 		}
 	}()
-	box := b.root.box
-	rendering.Layout(box, rendering.Tight(media.Size))
 	c.Save()
-	c.Scale(media.DevicePixelRatio, media.DevicePixelRatio)
-	box.Paint(&rendering.PaintContext{Canvas: c}, geom.Zero)
-	c.Restore()
+	defer c.Restore()
+	c.ClipRect(geom.Rect{Left: float64(area.Min.X), Top: float64(area.Min.Y), Right: float64(area.Max.X), Bottom: float64(area.Max.Y)})
+	c.ClearRect(area, gfx.White)
+	k := b.media.DevicePixelRatio
+	c.Scale(k, k)
+	b.root.box.Paint(&rendering.PaintContext{Canvas: c}, geom.Zero)
+}
+
+// union — наименьший прямоугольник, содержащий a и b (пустые не считаются).
+func union(a, b geom.Rect) geom.Rect {
+	switch {
+	case a.IsEmpty():
+		return b
+	case b.IsEmpty():
+		return a
+	}
+	return geom.Rect{Left: math.Min(a.Left, b.Left), Top: math.Min(a.Top, b.Top),
+		Right: math.Max(a.Right, b.Right), Bottom: math.Max(a.Bottom, b.Bottom)}
 }
 
 // HitTest находит боксы под точкой pos (в dp) — от самого глубокого к корню.

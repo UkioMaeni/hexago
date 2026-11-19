@@ -178,22 +178,37 @@ func advance(face font.Face, s string, spacing float64) float64 {
 }
 
 // drawLine рисует строку с базовой линией в точке экрана origin (в пикселях);
-// spacing — разрядка в пикселях.
+// spacing — разрядка в пикселях. Маска строки берётся из кеша: текст на экране от кадра к кадру
+// обычно тот же, а растеризация букв — дорогая.
 func drawLine(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col gfx.Color, spacing float64) {
+	ix, iy := int(math.Floor(origin.X)), int(math.Floor(origin.Y))
+	// Дробная часть позиции (с шагом 1/4 пикселя) — чтобы буквы стояли точно, а не прыгали по пикселям.
+	fx := math.Round((origin.X-float64(ix))*4) / 4
+	fy := math.Round((origin.Y-float64(iy))*4) / 4
+	key := lineKey{face: face, s: s, spacing: spacing, fx: fx, fy: fy}
+	l := lines.get(key)
+	if l == nil {
+		l = rasterLine(face, s, fx, fy, spacing)
+		lines.put(key, l)
+	}
+	c.DrawMask(l.mask, image.Point{X: ix + l.minX, Y: iy + l.minY}, col)
+}
+
+// rasterLine растеризует строку в маску; (minX, minY) — где левый верхний угол маски относительно
+// базовой точки строки.
+func rasterLine(face font.Face, s string, fx, fy, spacing float64) *lineMask {
 	bounds, _ := font.BoundString(face, s)
 	extra := int(math.Ceil(math.Abs(spacing) * float64(utf8.RuneCountInString(s))))
 	minX, minY := bounds.Min.X.Floor()-1, bounds.Min.Y.Floor()-1
 	maxX, maxY := bounds.Max.X.Ceil()+2+extra, bounds.Max.Y.Ceil()+1
-	ix, iy := int(math.Floor(origin.X)), int(math.Floor(origin.Y))
 	mask := image.NewAlpha(image.Rect(0, 0, maxX-minX, maxY-minY))
 	d := font.Drawer{
 		Dst:  mask,
 		Src:  image.Opaque,
 		Face: face,
-		// Дробная часть позиции — чтобы буквы стояли точно, а не прыгали по целым пикселям.
 		Dot: fixed.Point26_6{
-			X: fixed.I(-minX) + fixed.Int26_6((origin.X-float64(ix))*64),
-			Y: fixed.I(-minY) + fixed.Int26_6((origin.Y-float64(iy))*64),
+			X: fixed.I(-minX) + fixed.Int26_6(fx*64),
+			Y: fixed.I(-minY) + fixed.Int26_6(fy*64),
 		},
 	}
 	if spacing == 0 {
@@ -204,7 +219,48 @@ func drawLine(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col g
 			d.Dot.X += fixed.Int26_6(spacing * 64)
 		}
 	}
-	c.DrawMask(mask, image.Point{X: ix + minX, Y: iy + minY}, col)
+	return &lineMask{mask: mask, minX: minX, minY: minY}
+}
+
+// lineKey — по чему маски строк одинаковы.
+type lineKey struct {
+	face    font.Face
+	s       string
+	spacing float64
+	fx, fy  float64
+}
+
+type lineMask struct {
+	mask       *image.Alpha
+	minX, minY int
+}
+
+// lineCache — готовые маски строк. Когда они занимают больше lineCacheBytes, кеш очищается целиком:
+// просто и не даёт памяти расти при длинной прокрутке.
+type lineCache struct {
+	mu    sync.Mutex
+	m     map[lineKey]*lineMask
+	bytes int
+}
+
+const lineCacheBytes = 8 << 20
+
+var lines lineCache
+
+func (c *lineCache) get(k lineKey) *lineMask {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.m[k]
+}
+
+func (c *lineCache) put(k lineKey, l *lineMask) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.m == nil || c.bytes+len(l.mask.Pix) > lineCacheBytes {
+		c.m, c.bytes = map[lineKey]*lineMask{}, 0
+	}
+	c.m[k] = l
+	c.bytes += len(l.mask.Pix)
 }
 
 // faceFor возвращает шрифт нужной насыщенности и размера (размер в единицах координат).

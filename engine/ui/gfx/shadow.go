@@ -3,6 +3,7 @@ package gfx
 import (
 	"image"
 	"math"
+	"sync"
 
 	"hexago/ui/geom"
 )
@@ -23,11 +24,66 @@ func (c *Canvas) DrawShadow(rr geom.RRect, col Color, sigma float64) {
 	if b.Intersect(c.st.clip).Empty() {
 		return
 	}
+	// Размытая маска зависит только от размера, скруглений, размытия и дробного сдвига фигуры
+	// внутри пикселя — её берём из кеша: тени кнопок и карточек одинаковы из кадра в кадр.
+	m := c.st.m
+	q := func(v float64) float64 { return math.Round(v*4) / 4 }
+	key := shadowKey{
+		w: q(d.Width()), h: q(d.Height()), sigma: q(s),
+		fx: q(d.Left - math.Floor(d.Left)), fy: q(d.Top - math.Floor(d.Top)),
+		r: [4]float64{q(rr.Radius.TopLeft.X * m.A), q(rr.Radius.TopRight.X * m.A),
+			q(rr.Radius.BottomRight.X * m.A), q(rr.Radius.BottomLeft.X * m.A)},
+		axis: m.B == 0 && m.C == 0,
+	}
+	if key.axis {
+		if mask := shadows.get(key); mask != nil {
+			c.composite(b, mask, b.Min, Paint{Color: col})
+			return
+		}
+	}
 	var p Path
 	p.AddRRect(rr, false)
 	c.rasterizeIn(&p, b) // фигура целиком, без обрезки: размытие берёт края извне
 	blurAlpha(c.cover, s)
+	if key.axis {
+		mask := image.NewAlpha(c.cover.Rect)
+		copy(mask.Pix, c.cover.Pix)
+		shadows.put(key, mask)
+	}
 	c.composite(b, c.cover, b.Min, Paint{Color: col})
+}
+
+// shadowKey — по чему тени одинаковы (всё — в пикселях экрана, с шагом 1/4 пикселя).
+type shadowKey struct {
+	w, h, sigma, fx, fy float64
+	r                   [4]float64
+	axis                bool // без поворота (с поворотом тени не кешируются)
+}
+
+// shadowCache — готовые размытые маски теней. Когда их становится много, кеш очищается целиком:
+// на экране обычно десятки разных теней, а не тысячи.
+type shadowCache struct {
+	mu sync.Mutex
+	m  map[shadowKey]*image.Alpha
+}
+
+const shadowCacheSize = 128
+
+var shadows shadowCache
+
+func (c *shadowCache) get(k shadowKey) *image.Alpha {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.m[k]
+}
+
+func (c *shadowCache) put(k shadowKey, m *image.Alpha) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.m == nil || len(c.m) >= shadowCacheSize {
+		c.m = map[shadowKey]*image.Alpha{}
+	}
+	c.m[k] = m
 }
 
 // blurAlpha размывает маску покрытия, приближая гауссово размытие тремя проходами

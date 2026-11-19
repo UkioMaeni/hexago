@@ -32,6 +32,8 @@ type Node struct {
 	// ParentData — что родитель знает о ребёнке: FlexParentData у детей Row/Column,
 	// StackParentData у детей Stack. Выставляют виджеты Expanded, Positioned и подобные.
 	ParentData any
+
+	damage damageState // для перерисовки только изменившегося (damage.go)
 }
 
 func (n *Node) node() *Node { return n }
@@ -82,8 +84,20 @@ type PaintContext struct {
 }
 
 // PaintChild рисует ребёнка: offset — позиция родителя, к ней прибавляется позиция ребёнка.
+// Ребёнок целиком вне области, которую сейчас можно рисовать (перерисовка только изменившегося),
+// пропускается — вместе со всем своим поддеревом.
 func (ctx *PaintContext) PaintChild(child Box, offset geom.Offset) {
-	child.Paint(ctx, offset.Add(child.node().offset))
+	n := child.node()
+	at := offset.Add(n.offset)
+	margin := overflowMargin
+	if o, ok := child.(PaintOverflower); ok {
+		margin += o.PaintOverflow()
+	}
+	if _, transforms := child.(ChildTransformer); !transforms && // дети с поворотом могут выйти за края
+		ctx.Canvas.QuickReject(geom.RectFromSize(at, n.size).Inflate(margin)) {
+		return
+	}
+	child.Paint(ctx, at)
 }
 
 // PaintChildren рисует всех детей бокса по порядку.

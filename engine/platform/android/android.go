@@ -57,26 +57,18 @@ static void hx_system_bars(jboolean light) { hx_call(hx_system_bars_id, light); 
 import "C"
 
 import (
+	"image"
 	"sync"
 	"time"
 	"unsafe"
 )
 
-// Frame — буфер пикселей одного кадра.
-type Frame struct {
-	// Pixels — все пиксели построчно. Пиксель (x, y) — это Pixels[y*Stride+x].
-	// Цвет пикселя — uint32 в порядке 0xAABBGGRR.
-	Pixels []uint32
-
+// FrameInfo — что известно о кадре до рисования.
+type FrameInfo struct {
 	// Width, Height — размер экрана в физических пикселях.
 	Width, Height int
 
-	// Stride — длина строки в памяти, в пикселях. Stride ≥ Width:
-	// в конце строки могут быть невидимые пиксели выравнивания.
-	Stride int
-
 	// Scale — сколько физических пикселей в одном dp (плотность экрана).
-	// Размер в dp × Scale = размер в пикселях.
 	Scale float64
 
 	// Insets — сколько физических пикселей слева, сверху, справа и снизу занимают
@@ -88,16 +80,39 @@ type Frame struct {
 
 	// Time — время кадра от включения устройства: по нему идут анимации.
 	Time time.Duration
+
+	// Full — кадр нужно нарисовать целиком (новая поверхность, сменилась тема).
+	Full bool
 }
 
-// DrawFunc рисует кадр.
-type DrawFunc func(f Frame)
+// Frame — буфер пикселей окна.
+type Frame struct {
+	// Pixels — все пиксели построчно. Пиксель (x, y) — это Pixels[y*Stride+x].
+	// Цвет пикселя — uint32 в порядке 0xAABBGGRR.
+	Pixels []uint32
 
-var draw DrawFunc
+	// Width, Height — размер буфера в физических пикселях.
+	Width, Height int
 
-// SetDraw задаёт функцию рисования кадра. Android вызывает её, когда поверхность готова
-// или поменяла размер и когда Go попросил кадр (RequestFrame).
-func SetDraw(f DrawFunc) { draw = f }
+	// Stride — длина строки в памяти, в пикселях. Stride ≥ Width:
+	// в конце строки могут быть невидимые пиксели выравнивания.
+	Stride int
+}
+
+// Renderer рисует кадры в два шага. Prepare — построить и разложить кадр и сказать, какую часть
+// экрана (в пикселях) нужно перерисовать; пустой прямоугольник — ничего, кадр не отправляется.
+// Paint — нарисовать в буфер окна внутри dirty. Android переносит остальное с прошлого кадра сам
+// и иногда просит перерисовать больше (dirty бывает больше того, что вернул Prepare).
+type Renderer interface {
+	Prepare(f FrameInfo) image.Rectangle
+	Paint(f Frame, dirty image.Rectangle)
+}
+
+var renderer Renderer
+
+// SetRenderer задаёт, кто рисует кадры. Android просит кадр, когда поверхность готова
+// или поменялась и когда Go попросил кадр (RequestFrame).
+func SetRenderer(r Renderer) { renderer = r }
 
 // Log пишет строку в Logcat с тегом hexago.
 func Log(msg string) {
@@ -205,35 +220,52 @@ func goString(env *C.JNIEnv, s C.jstring) string {
 
 //export Java_dev_hexago_HexagoActivity_nativeDraw
 func Java_dev_hexago_HexagoActivity_nativeDraw(env *C.JNIEnv, clazz C.jclass, surface C.jobject, density C.jfloat,
-	insetLeft, insetTop, insetRight, insetBottom C.jint, darkTheme C.jboolean, frameTimeNanos C.jlong) {
+	insetLeft, insetTop, insetRight, insetBottom C.jint, darkTheme C.jboolean, frameTimeNanos C.jlong, full C.jboolean) {
+	if renderer == nil {
+		return // приложение ещё не сказало, что рисовать
+	}
 	win := C.ANativeWindow_fromSurface(env, surface)
 	if win == nil {
 		return
 	}
 	defer C.ANativeWindow_release(win)
 
+	info := FrameInfo{
+		Width:     int(C.ANativeWindow_getWidth(win)),
+		Height:    int(C.ANativeWindow_getHeight(win)),
+		Scale:     float64(density),
+		Insets:    [4]int{int(insetLeft), int(insetTop), int(insetRight), int(insetBottom)},
+		DarkTheme: darkTheme != C.JNI_FALSE,
+		Time:      time.Duration(frameTimeNanos),
+		Full:      full != C.JNI_FALSE,
+	}
+	dirty := renderer.Prepare(info)
+	if info.Full {
+		dirty = image.Rect(0, 0, info.Width, info.Height)
+	}
+	if dirty.Empty() {
+		return // ничего не изменилось — кадр не отправляем
+	}
+
 	// Формат — 4 байта на пиксель RGBA; 0, 0 — размер окна не менять.
 	C.ANativeWindow_setBuffersGeometry(win, 0, 0, C.WINDOW_FORMAT_RGBA_8888)
 
+	// Блокируем только изменившуюся часть: Android скопирует остальное из прошлого кадра и вернёт
+	// в rect то, что действительно надо перерисовать (иногда больше, например весь экран).
+	rect := C.ARect{left: C.int32_t(dirty.Min.X), top: C.int32_t(dirty.Min.Y),
+		right: C.int32_t(dirty.Max.X), bottom: C.int32_t(dirty.Max.Y)}
 	var buf C.ANativeWindow_Buffer
-	if C.ANativeWindow_lock(win, &buf, nil) != 0 {
+	if C.ANativeWindow_lock(win, &buf, &rect) != 0 {
 		return
 	}
 	// defer выполняются в обратном порядке: сначала показать кадр, потом отпустить окно.
 	defer C.ANativeWindow_unlockAndPost(win)
 
-	if draw == nil {
-		return // приложение ещё не сказало, что рисовать
-	}
 	stride, height := int(buf.stride), int(buf.height)
-	draw(Frame{
-		Pixels:    unsafe.Slice((*uint32)(buf.bits), stride*height),
-		Width:     int(buf.width),
-		Height:    height,
-		Stride:    stride,
-		Scale:     float64(density),
-		Insets:    [4]int{int(insetLeft), int(insetTop), int(insetRight), int(insetBottom)},
-		DarkTheme: darkTheme != C.JNI_FALSE,
-		Time:      time.Duration(frameTimeNanos),
-	})
+	renderer.Paint(Frame{
+		Pixels: unsafe.Slice((*uint32)(buf.bits), stride*height),
+		Width:  int(buf.width),
+		Height: height,
+		Stride: stride,
+	}, image.Rect(int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)))
 }

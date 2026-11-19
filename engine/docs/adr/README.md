@@ -28,6 +28,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0020](0020-material3-theme.md) | Тема Material 3: ui/material, стиль текста по умолчанию, тёмная тема системы | принято |
 | [0021](0021-material-components.md) | Компоненты Material 3 и значки как пути SVG | принято |
 | [0022](0022-animations-and-scrolling.md) | Анимации и прокрутка | принято |
+| [0023](0023-fast-software-rendering.md) | Быстрая программная отрисовка | принято |
 
 Шаблон нового ADR:
 

@@ -91,14 +91,31 @@ func (c *Canvas) Matrix() geom.Affine { return c.st.m }
 func (c *Canvas) MultiplyOpacity(a float64) { c.st.alpha *= clamp01(a) }
 
 // Clear заливает весь холст цветом, не обращая внимания на обрезку.
-func (c *Canvas) Clear(col Color) {
-	p := col.Pixel()
-	for y := range c.height {
-		row := c.pix[y*c.stride : y*c.stride+c.width]
-		for x := range row {
-			row[x] = p
-		}
+func (c *Canvas) Clear(col Color) { c.ClearRect(image.Rect(0, 0, c.width, c.height), col) }
+
+// ClearRect заливает прямоугольник r (в пикселях) цветом, не смешивая с тем, что там было.
+func (c *Canvas) ClearRect(r image.Rectangle, col Color) {
+	r = r.Intersect(image.Rect(0, 0, c.width, c.height))
+	if r.Empty() {
+		return
 	}
+	p := col.Pixel()
+	first := c.pix[r.Min.Y*c.stride+r.Min.X : r.Min.Y*c.stride+r.Max.X]
+	for x := range first {
+		first[x] = p
+	}
+	for y := r.Min.Y + 1; y < r.Max.Y; y++ {
+		copy(c.pix[y*c.stride+r.Min.X:y*c.stride+r.Max.X], first)
+	}
+}
+
+// QuickReject сообщает, что прямоугольник r (в локальных координатах) целиком вне области,
+// куда сейчас можно рисовать: такую фигуру можно не рисовать вовсе.
+func (c *Canvas) QuickReject(r geom.Rect) bool {
+	d := c.st.m.MapRect(r)
+	clip := c.st.clip
+	return d.Right <= float64(clip.Min.X) || d.Left >= float64(clip.Max.X) ||
+		d.Bottom <= float64(clip.Min.Y) || d.Top >= float64(clip.Max.Y)
 }
 
 // ClipRect ограничивает рисование прямоугольником (до Restore).
@@ -174,6 +191,9 @@ func (c *Canvas) DrawRRect(rr geom.RRect, paint Paint) {
 			p.AddRRect(inner, true)
 		}
 	} else {
+		if paint.Shader == nil && c.fillRRectFast(rr, paint.Color) {
+			return
+		}
 		p.AddRRect(rr, false)
 	}
 	c.fill(&p, paint)
@@ -296,9 +316,12 @@ func (c *Canvas) composite(area image.Rectangle, cov *image.Alpha, origin image.
 	if paint.Shader != nil {
 		shade = paint.Shader.at(c.st.m)
 	}
-	alpha := c.st.alpha
+	alpha := uint32(c.st.alpha*255 + 0.5)
 	mask := c.st.clipMask
 	base := paint.Color
+	// Непрозрачность цвета с учётом общей прозрачности холста (0…255), если цвет один на всю фигуру.
+	ca := div255(uint32(base.A) * alpha)
+	r, g, bb := uint32(base.R), uint32(base.G), uint32(base.B)
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		row := c.pix[y*c.stride:]
 		covBase := (y-origin.Y)*cov.Stride - origin.X
@@ -312,19 +335,20 @@ func (c *Canvas) composite(area image.Rectangle, cov *image.Alpha, origin image.
 				continue
 			}
 			if mask != nil {
-				if k = k * uint32(mask.Pix[maskBase+x]) / 255; k == 0 {
+				if k = div255(k * uint32(mask.Pix[maskBase+x])); k == 0 {
 					continue
 				}
 			}
-			col := base
 			if shade != nil {
-				col = shade(float64(x)+0.5, float64(y)+0.5)
-			}
-			a := float64(col.A) / 255 * float64(k) / 255 * alpha
-			if a <= 0 {
+				col := shade(float64(x)+0.5, float64(y)+0.5)
+				if a := div255(div255(uint32(col.A)*alpha) * k); a > 0 {
+					row[x] = mix(row[x], uint32(col.R), uint32(col.G), uint32(col.B), a)
+				}
 				continue
 			}
-			row[x] = blend(row[x], col, a)
+			if a := div255(ca * k); a > 0 {
+				row[x] = mix(row[x], r, g, bb, a)
+			}
 		}
 	}
 }

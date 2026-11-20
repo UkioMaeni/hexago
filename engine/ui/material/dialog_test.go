@@ -21,10 +21,12 @@ type phone struct {
 	b      *widgets.Binding
 	canvas *gfx.Canvas
 	now    time.Duration
+	clock  *gestures.FakeClock // таймеры (SnackBar уходит сам) идут вместе с кадрами
 }
 
 func newPhone(t *testing.T, app widgets.Widget) *phone {
-	p := &phone{t: t, b: widgets.NewBinding(app), canvas: gfx.NewImageCanvas(720, 1520)}
+	p := &phone{t: t, b: widgets.NewBinding(app), canvas: gfx.NewImageCanvas(720, 1520), clock: &gestures.FakeClock{}}
+	p.b.SetClock(p.clock)
 	p.frame()
 	return p
 }
@@ -40,6 +42,7 @@ func (p *phone) frame() {
 func (p *phone) wait(d time.Duration) {
 	for end := p.now + d; p.now < end; {
 		p.now += 16 * time.Millisecond
+		p.clock.Advance(16 * time.Millisecond)
 		p.frame()
 	}
 }

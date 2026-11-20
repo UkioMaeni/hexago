@@ -157,8 +157,9 @@ func (n *Navigator) transitionOf(e *routeEntry) Transition {
 	return Fade
 }
 
-// Push кладёт маршрут поверх остальных.
-func (n *Navigator) Push(r Route) {
+// Push кладёт маршрут поверх остальных и возвращает его анимацию входа: её можно вести самому,
+// например открывать боковую панель вслед за пальцем.
+func (n *Navigator) Push(r Route) *animation.Controller {
 	if r.Page == nil {
 		panic("widgets: Push без содержимого: Route.Page = nil")
 	}
@@ -167,6 +168,7 @@ func (n *Navigator) Push(r Route) {
 	n.relink()
 	n.animate(e, 1)
 	n.changed()
+	return e.ctrl
 }
 
 // PushReplacement кладёт маршрут вместо верхнего: прежний уходит из стопки, когда новый доедет

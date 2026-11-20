@@ -154,6 +154,7 @@ type Element struct {
 	kind       kind
 	live       reflect.Value           // у виджета с состоянием — живой экземпляр (*ТвойВиджет)
 	animations []*animation.Controller // созданы через NewAnimation; останавливаются при удалении
+	timers     []*timer                // созданы через AfterFunc; отменяются при удалении
 	box        rendering.Box
 	dirty      bool
 	mounted    bool
@@ -200,6 +201,17 @@ func SizeOf(ctx BuildContext) geom.Size {
 		return rendering.SizeOf(b)
 	}
 	return geom.Size{}
+}
+
+// BoundsOf — где виджет ctx лежит на экране (dp) по последнему кадру: так всплывающее меню встаёт
+// под своей кнопкой. До первого кадра — пустой прямоугольник. Читают его в обработчиках событий.
+func BoundsOf(ctx BuildContext) geom.Rect {
+	if b := ctx.element().FindBox(); b != nil {
+		if r, ok := rendering.ScreenRect(b); ok {
+			return r
+		}
+	}
+	return geom.Rect{}
 }
 
 // BuildOwner управляет перестройками: помнит «грязные» элементы и перестраивает их по порядку.
@@ -305,6 +317,10 @@ func (o *BuildOwner) unmount(e *Element) {
 		a.Dispose()
 	}
 	e.animations = nil
+	for _, t := range e.timers {
+		t.stop()
+	}
+	e.timers = nil
 	for dep := range e.deps {
 		delete(dep.dependents, e)
 	}

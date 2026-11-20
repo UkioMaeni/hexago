@@ -108,7 +108,11 @@ Android (на Android 13+ — `OnBackInvokedCallback`), `FadeTransition`, `Slide
 Готово (ADR-0024): переход экранов Material, `AlertDialog`, `Dialog`, `ShowDialog`, нижняя панель
 (`ShowBottomSheet`, тянется пальцем), стрелка «Назад» в `AppBar`.
 
-Впереди: схема из одного цвета (fromSeed), `SnackBar`, `Drawer`, меню, чипы, вкладки.
+Готово ([ADR-0025](adr/0025-snackbar-drawer-menus.md)): `SnackBar` (очередь в `App`, плавающая кнопка поднимается над
+сообщением), боковая панель `Drawer` и `NavigationDrawer` (кнопка «меню» в `AppBar`, выдвигание от края), меню
+`MenuButton`, `ShowMenu`, `MenuItem`; `widgets.AfterFunc`, `widgets.BoundsOf`.
+
+Впереди: схема из одного цвета (fromSeed), чипы, вкладки, смахивание `SnackBar`, `Overlay` и подсказки.
 
 ## P8 — Ввод текста и изображения ⏳
 

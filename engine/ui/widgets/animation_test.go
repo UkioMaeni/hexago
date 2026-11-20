@@ -6,6 +6,7 @@ import (
 
 	"hexago/ui/animation"
 	"hexago/ui/geom"
+	"hexago/ui/gestures"
 	"hexago/ui/gfx"
 	"hexago/ui/rendering"
 	w "hexago/ui/widgets"
@@ -110,4 +111,73 @@ func (b *blinker) Init(ctx w.BuildContext) {
 
 func (b *blinker) Build(w.BuildContext) w.Widget {
 	return w.Opacity{Opacity: b.a.Value(), Child: w.ColoredBox{Color: gfx.Red}}
+}
+
+// timed ставит таймер в Init и отмечает, что он сработал.
+type timed struct {
+	w.State
+	fired *int
+}
+
+func (t *timed) Init(ctx w.BuildContext) {
+	w.AfterFunc(ctx, time.Second, func() { *t.fired++ })
+}
+
+func (t *timed) Build(w.BuildContext) w.Widget { return w.SizedBox{} }
+
+// switcher показывает виджет с таймером или пустое место.
+type switcher struct {
+	w.State
+	on    bool
+	fired *int
+}
+
+func (s *switcher) Build(w.BuildContext) w.Widget {
+	if s.on {
+		return timed{fired: s.fired}
+	}
+	return w.SizedBox{}
+}
+
+func TestAfterFunc(t *testing.T) {
+	fired := 0
+	b := w.NewBinding(switcher{on: true, fired: &fired})
+	clock := &gestures.FakeClock{}
+	b.SetClock(clock)
+	drawFrame(b)
+	clock.Advance(500 * time.Millisecond)
+	if fired != 0 {
+		t.Fatal("таймер сработал раньше времени")
+	}
+	clock.Advance(600 * time.Millisecond)
+	if fired != 1 {
+		t.Fatalf("таймер сработал %d раз", fired)
+	}
+
+	// Виджет убран до срока — таймер не срабатывает.
+	s := findState[*switcher](b.Root())
+	s.SetState(func() { s.on = false })
+	drawFrame(b)
+	s.SetState(func() { s.on = true })
+	drawFrame(b)
+	s.SetState(func() { s.on = false })
+	drawFrame(b)
+	clock.Advance(2 * time.Second)
+	if fired != 1 {
+		t.Errorf("таймер убранного виджета сработал: %d", fired)
+	}
+}
+
+func TestBoundsOf(t *testing.T) {
+	var ctx w.BuildContext
+	app := w.Padding{Padding: geom.EdgeInsets{Left: 10, Top: 20}, Child: w.Align{Alignment: geom.TopLeft,
+		Child: w.Builder{Builder: func(c w.BuildContext) w.Widget {
+			ctx = c
+			return w.SizedBox{Width: new(30.0), Height: new(40.0)}
+		}}}}
+	b := w.NewBinding(app)
+	b.DrawFrame(gfx.NewImageCanvas(200, 200), w.MediaQueryData{Size: geom.Size{Width: 200, Height: 200}, DevicePixelRatio: 1})
+	if r := w.BoundsOf(ctx); r != (geom.Rect{Left: 10, Top: 20, Right: 40, Bottom: 60}) {
+		t.Errorf("BoundsOf = %v", r)
+	}
 }

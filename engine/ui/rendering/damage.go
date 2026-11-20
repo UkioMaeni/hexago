@@ -19,6 +19,9 @@ type damageState struct {
 	childrenChanged bool      // сменились дети (снимок вокруг надо перерисовать)
 	prev            geom.Rect // где был на экране в прошлом кадре (dp, с запасом PaintOverflow)
 	hasPrev         bool
+	// reach — насколько то, что рисует поддерево бокса (его тени и тени потомков), выходит за края
+	// бокса, в dp. По нему PaintChild решает, можно ли не рисовать поддерево вне области перерисовки.
+	reach float64
 }
 
 // MarkNeedsPaint помечает, что бокс рисуется иначе, чем в прошлом кадре.
@@ -76,8 +79,8 @@ func CollectDamage(root Box) geom.Rect {
 		damage = geom.Rect{Left: math.Min(damage.Left, r.Left), Top: math.Min(damage.Top, r.Top),
 			Right: math.Max(damage.Right, r.Right), Bottom: math.Max(damage.Bottom, r.Bottom)}
 	}
-	var walk func(b Box, m geom.Affine, snap *snapshotScope)
-	walk = func(b Box, m geom.Affine, snap *snapshotScope) {
+	var walk func(b Box, m geom.Affine, snap *snapshotScope) geom.Rect
+	walk = func(b Box, m geom.Affine, snap *snapshotScope) geom.Rect {
 		n := b.node()
 		margin := overflowMargin
 		if o, ok := b.(PaintOverflower); ok {
@@ -120,10 +123,18 @@ func CollectDamage(root Box) geom.Rect {
 		if p, ok := b.(ChildPainter); ok {
 			children = p.PaintedChildren()
 		}
+		// Докуда рисует поддерево: сам бокс с запасом и всё, что рисуют дети.
+		reach := cur
 		for _, ch := range children {
 			o := ch.node().offset
-			walk(ch, cm.Mul(geom.Translation(o.X, o.Y)), snap)
+			reach = reach.Union(walk(ch, cm.Mul(geom.Translation(o.X, o.Y)), snap))
 		}
+		if _, clips := b.(*ClipBox); clips {
+			reach = cur // обрезка: дальше своих краёв поддерево не рисует
+		}
+		raw := cur.Inflate(-margin)
+		d.reach = math.Max(math.Max(raw.Left-reach.Left, reach.Right-raw.Right), math.Max(raw.Top-reach.Top, reach.Bottom-raw.Bottom))
+		return reach
 	}
 	damageFrame++
 	walk(root, geom.Identity, nil)
@@ -245,4 +256,18 @@ func (b *DecoratedBox) PaintOverflow() float64 {
 		out = math.Max(out, e)
 	}
 	return out
+}
+
+// ScreenRect — где бокс лежал на экране в последнем кадре (dp, со всеми сдвигами и прокруткой):
+// его запоминает учёт повреждений. false — бокс ещё не рисовался.
+func ScreenRect(b Box) (geom.Rect, bool) {
+	d := b.node().damage
+	if !d.hasPrev {
+		return geom.Rect{}, false
+	}
+	margin := overflowMargin
+	if o, ok := b.(PaintOverflower); ok {
+		margin += o.PaintOverflow()
+	}
+	return d.prev.Inflate(-margin), true
 }

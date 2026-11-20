@@ -36,15 +36,15 @@ type App struct {
 
 func (a App) Build(ctx widgets.BuildContext) widgets.Widget {
 	t := a.theme(widgets.MediaQueryOf(ctx).PlatformBrightness)
-	// Тема — над Navigator: её видят все экраны и окна, а не только Home.
+	// Тема и очередь сообщений — над Navigator: их видят все экраны и окна, а не только Home.
 	return widgets.SystemBars{
 		LightIcons: t.Brightness() == gfx.Dark,
-		Child: themed(t, widgets.App{
+		Child: themed(t, messenger{Child: widgets.App{
 			Title:          a.Title,
 			Color:          t.Colors.Surface,
 			Home:           a.Home,
 			PageTransition: PageTransition,
-		}),
+		}}),
 	}
 }
 

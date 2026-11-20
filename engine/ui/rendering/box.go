@@ -100,6 +100,8 @@ func (ctx *PaintContext) PaintChild(child Box, offset geom.Offset) {
 	if o, ok := child.(PaintOverflower); ok {
 		margin += o.PaintOverflow()
 	}
+	// Тени потомков могут выйти за края бокса дальше его собственного запаса (учёт повреждений знает насколько).
+	margin = math.Max(margin, n.damage.reach)
 	if _, transforms := child.(ChildTransformer); !transforms && // дети с поворотом могут выйти за края
 		ctx.Canvas.QuickReject(geom.RectFromSize(at, n.size).Inflate(margin)) {
 		return

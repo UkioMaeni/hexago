@@ -8,8 +8,9 @@ import (
 	"hexago/ui/widgets"
 )
 
-// Scaffold — каркас экрана Material: AppBar сверху, Body, плавающая кнопка в правом нижнем углу
-// и нижняя панель (NavigationBar). Фон — Surface темы.
+// Scaffold — каркас экрана Material: AppBar сверху, Body, плавающая кнопка в правом нижнем углу,
+// нижняя панель (NavigationBar) и боковая панель (Drawer). Фон — Surface темы. Внизу, над нижней
+// панелью, появляются сообщения SnackBar — плавающая кнопка поднимается над ними.
 //
 // Отступы системных панелей Scaffold отдаёт тем, кто у края: AppBar сам отступает от строки
 // состояния, нижняя панель — от панели навигации. Для Body эти отступы убираются из MediaQuery,
@@ -20,7 +21,10 @@ type Scaffold struct {
 	Body                 widgets.Widget
 	FloatingActionButton widgets.Widget
 	BottomBar            widgets.Widget
-	BackgroundColor      gfx.Color // прозрачный — Surface
+	// Drawer — боковая панель (обычно NavigationDrawer): AppBar ставит кнопку «меню», панель
+	// выдвигается и движением пальца от левого края экрана.
+	Drawer          widgets.Widget
+	BackgroundColor gfx.Color // прозрачный — Surface
 }
 
 func (s Scaffold) Build(ctx widgets.BuildContext) widgets.Widget {
@@ -36,15 +40,15 @@ func (s Scaffold) Build(ctx widgets.BuildContext) widgets.Widget {
 	if s.BottomBar != nil {
 		bodyMQ.Padding.Bottom = 0
 	}
-	layers := []widgets.Widget{widgets.PositionedFill(widgets.MediaQuery{Data: bodyMQ, Child: s.Body})}
-	if s.FloatingActionButton != nil {
-		bottom := 16.0
-		if s.BottomBar == nil {
-			bottom += mq.Padding.Bottom
-		}
-		layers = append(layers, widgets.Positioned{
-			Right: new(16 + mq.Padding.Right), Bottom: new(bottom), Child: s.FloatingActionButton,
-		})
+	bottom := 0.0
+	if s.BottomBar == nil {
+		bottom = mq.Padding.Bottom
+	}
+	layers := []widgets.Widget{
+		widgets.PositionedFill(widgets.MediaQuery{Data: bodyMQ, Child: s.Body}),
+		widgets.Positioned{Left: new(0.0), Right: new(0.0), Bottom: new(bottom), Child: scaffoldBottom{
+			FAB: s.FloatingActionButton, Left: mq.Padding.Left, Right: mq.Padding.Right,
+		}},
 	}
 	column := []widgets.Widget{}
 	if s.AppBar != nil {
@@ -54,12 +58,20 @@ func (s Scaffold) Build(ctx widgets.BuildContext) widgets.Widget {
 	if s.BottomBar != nil {
 		column = append(column, s.BottomBar)
 	}
-	return widgets.ColoredBox{Color: bg, Child: widgets.Column{CrossAxisAlignment: rendering.CrossAxisStretch, Children: column}}
+	var root widgets.Widget = widgets.ColoredBox{Color: bg,
+		Child: widgets.Column{CrossAxisAlignment: rendering.CrossAxisStretch, Children: column}}
+	if s.Drawer != nil {
+		root = widgets.Stack{Fit: rendering.StackExpand, Children: []widgets.Widget{root,
+			widgets.Positioned{Left: new(0.0), Top: new(0.0), Bottom: new(0.0),
+				Child: drawerEdge{Drawer: s.Drawer, Width: 20 + mq.Padding.Left}},
+		}}
+	}
+	return scaffoldScope{drawer: s.Drawer, Child: root}
 }
 
 // AppBar — верхняя панель Material 3 (small top app bar): высота 64 dp под строкой состояния,
-// Leading слева (обычно IconButton «меню»), заголовок, Actions справа. Если с экрана есть куда
-// вернуться (widgets.CanPop), а Leading не задан, слева сама появляется стрелка «Назад».
+// Leading слева (обычно IconButton «меню»), заголовок, Actions справа. Если Leading не задан, слева сама
+// появляется кнопка «меню» (у Scaffold есть Drawer) или стрелка «Назад» (с экрана есть куда вернуться).
 type AppBar struct {
 	widgets.Base
 	Leading      widgets.Widget
@@ -80,6 +92,9 @@ func (a AppBar) Build(ctx widgets.BuildContext) widgets.Widget {
 	title.Color = t.Colors.OnSurface
 
 	leading := a.Leading
+	if s, ok := widgets.DependOn[scaffoldScope](ctx); leading == nil && ok && s.drawer != nil {
+		leading = IconButton{Icon: icons.Menu, OnPressed: func() { OpenDrawer(ctx) }}
+	}
 	if leading == nil && !a.NoBackButton && widgets.CanPop(ctx) {
 		leading = IconButton{Icon: icons.ArrowBack, OnPressed: func() { widgets.Pop(ctx) }}
 	}

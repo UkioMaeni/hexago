@@ -14,13 +14,15 @@ import (
 	"hexago/ui/rendering"
 )
 
-// App — корень приложения: название, цвет фона и стартовый экран Home.
-// Позже сюда добавятся тема и маршруты, как в MaterialApp.
+// App — корень приложения: название, цвет фона и Navigator со стартовым экраном Home.
+// material.App строит его сам, с темой и переходами Material.
 type App struct {
 	Base
 	Title string
-	Color gfx.Color // фон под экраном; по умолчанию белый
+	Color gfx.Color // фон под экранами; по умолчанию белый
 	Home  Widget
+	// PageTransition — как экраны входят и уходят (Push, Pop); пустой — Fade.
+	PageTransition Transition
 }
 
 func (a App) Build(BuildContext) Widget {
@@ -28,7 +30,7 @@ func (a App) Build(BuildContext) Widget {
 	if bg.IsTransparent() {
 		bg = gfx.White
 	}
-	return ColoredBox{Color: bg, Child: a.Home}
+	return ColoredBox{Color: bg, Child: Navigator{Home: a.Home, Transition: a.PageTransition}}
 }
 
 // Binding связывает дерево виджетов с экраном: перестраивает, раскладывает и рисует кадры.
@@ -50,6 +52,11 @@ type Binding struct {
 	// lightIcons — светлые значки для тёмного фона.
 	SetSystemBars func(lightIcons bool)
 	lightIcons    bool
+
+	// SetHandlesBack вызывается, когда меняется, есть ли что закрыть кнопкой «Назад» (HandleBack):
+	// пока нечего, платформа обрабатывает её сама — сворачивает приложение.
+	SetHandlesBack func(handles bool)
+	handlesBack    bool
 
 	failed    any  // ошибка раскладки этого кадра (кадр заливается красным)
 	wasFailed bool // прошлый кадр был с ошибкой: следующий рисуется целиком
@@ -167,6 +174,22 @@ func (b *Binding) HandlePointer(e gestures.PointerEvent) {
 	}
 }
 
+// HandleBack — нажата кнопка «Назад»: закрывается верхний маршрут Navigator. false — закрывать нечего
+// (открыт первый экран), пусть платформа поступит как обычно.
+func (b *Binding) HandleBack() (handled bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("Ошибка при обработке «Назад»: %v\n%s\n", r, debug.Stack())
+		}
+	}()
+	n := b.owner.backNavigator()
+	if n == nil {
+		return false
+	}
+	n.Pop(nil)
+	return true
+}
+
 func (b *Binding) rootWidget() Widget {
 	return view{Child: MediaQuery{Data: b.media, Child: b.app}}
 }
@@ -222,6 +245,12 @@ func (b *Binding) Layout(media MediaQueryData) image.Rectangle {
 			b.SetSystemBars(bars.LightIcons)
 		}
 	}
+	if handles := b.owner.backNavigator() != nil; handles != b.handlesBack {
+		b.handlesBack = handles
+		if b.SetHandlesBack != nil {
+			b.SetHandlesBack(handles)
+		}
+	}
 
 	screen := image.Rect(0, 0, int(math.Ceil(media.Size.Width*media.DevicePixelRatio)),
 		int(math.Ceil(media.Size.Height*media.DevicePixelRatio)))
@@ -270,9 +299,11 @@ func (b *Binding) Paint(c *gfx.Canvas, area image.Rectangle) {
 	c.Save()
 	defer c.Restore()
 	c.ClipRect(geom.Rect{Left: float64(area.Min.X), Top: float64(area.Min.Y), Right: float64(area.Max.X), Bottom: float64(area.Max.Y)})
-	c.ClearRect(area, gfx.White)
 	k := b.media.DevicePixelRatio
 	c.Scale(k, k)
+	if !rendering.CoversOpaque(b.root.box, c.Matrix(), geom.Zero) { // обычно экран закрашивает всё сам
+		c.ClearRect(area, gfx.White)
+	}
 	b.root.box.Paint(&rendering.PaintContext{Canvas: c}, geom.Zero)
 }
 

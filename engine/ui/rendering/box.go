@@ -3,6 +3,7 @@ package rendering
 import (
 	"fmt"
 	"math"
+	"slices"
 
 	"hexago/ui/geom"
 	"hexago/ui/gfx"
@@ -62,7 +63,13 @@ func Child(b Box) Box {
 }
 
 // SetChildren заменяет детей бокса. Вызывает дерево элементов после перестройки.
-func SetChildren(b Box, children []Box) { b.node().children = children }
+func SetChildren(b Box, children []Box) {
+	n := b.node()
+	if !slices.Equal(n.children, children) {
+		n.damage.childrenChanged = true
+	}
+	n.children = children
+}
 
 // Layout раскладывает бокс с ограничениями c и возвращает его размер.
 func Layout(b Box, c Constraints) geom.Size {

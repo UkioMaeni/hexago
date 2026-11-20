@@ -74,3 +74,42 @@ func Lerp(a, b, t float64) float64 { return a + (b-a)*t }
 
 // clamp ограничивает x отрезком [lo, hi].
 func clamp(x, lo, hi float64) float64 { return math.Max(lo, math.Min(hi, x)) }
+
+// Interval — кривая, которая проходит весь путь на отрезке времени [Begin, End] (доли 0…1):
+// до Begin — 0, после End — 1, внутри — по Curve (nil — равномерно). Так часть перехода идёт
+// быстрее остального: прозрачность экрана набирается за первую треть, а сдвиг — за всё время.
+type Interval struct {
+	Begin, End float64
+	Curve      Curve
+}
+
+func (i Interval) Transform(t float64) float64 {
+	switch {
+	case t <= i.Begin:
+		return 0
+	case t >= i.End:
+		return 1
+	}
+	u := (t - i.Begin) / (i.End - i.Begin)
+	if i.Curve != nil {
+		return i.Curve.Transform(u)
+	}
+	return u
+}
+
+// Animation — значение, которое меняется со временем (обычно 0…1). Его реализует Controller;
+// Curved даёт то же значение, пропущенное через кривую. Виджеты переходов (FadeTransition,
+// SlideTransition) берут значение в каждом кадре сами — перестраивать их не нужно.
+type Animation interface {
+	Value() float64
+}
+
+// Curved — анимация parent, пропущенная через кривую c: Curved(ctrl, Interval{0, 0.3, nil}).
+func Curved(parent Animation, c Curve) Animation { return curved{parent, c} }
+
+type curved struct {
+	parent Animation
+	curve  Curve
+}
+
+func (a curved) Value() float64 { return a.curve.Transform(a.parent.Value()) }

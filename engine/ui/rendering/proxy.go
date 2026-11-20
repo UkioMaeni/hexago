@@ -13,7 +13,8 @@ type ColoredBox struct {
 }
 
 func (b *ColoredBox) Paint(ctx *PaintContext, offset geom.Offset) {
-	if s := SizeOf(b); !s.IsEmpty() && !b.Color.IsTransparent() {
+	// Фон, который ребёнок всё равно закрасит целиком (экраны в Navigator), не рисуется.
+	if s := SizeOf(b); !s.IsEmpty() && !b.Color.IsTransparent() && !childCoversOpaque(b, ctx.Canvas.Matrix(), offset) {
 		ctx.Canvas.DrawRect(geom.RectFromSize(offset, s), gfx.Paint{Color: b.Color})
 	}
 	PaintChildren(ctx, b, offset)

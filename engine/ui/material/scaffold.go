@@ -58,14 +58,16 @@ func (s Scaffold) Build(ctx widgets.BuildContext) widgets.Widget {
 }
 
 // AppBar — верхняя панель Material 3 (small top app bar): высота 64 dp под строкой состояния,
-// Leading слева (обычно IconButton «назад» или «меню»), заголовок, Actions справа.
+// Leading слева (обычно IconButton «меню»), заголовок, Actions справа. Если с экрана есть куда
+// вернуться (widgets.CanPop), а Leading не задан, слева сама появляется стрелка «Назад».
 type AppBar struct {
 	widgets.Base
-	Leading     widgets.Widget
-	Title       widgets.Widget // обычно widgets.Text без стиля
-	Actions     []widgets.Widget
-	CenterTitle bool
-	Color       gfx.Color // прозрачный — Surface
+	Leading      widgets.Widget
+	NoBackButton bool           // не ставить стрелку «Назад» самой
+	Title        widgets.Widget // обычно widgets.Text без стиля
+	Actions      []widgets.Widget
+	CenterTitle  bool
+	Color        gfx.Color // прозрачный — Surface
 }
 
 func (a AppBar) Build(ctx widgets.BuildContext) widgets.Widget {
@@ -77,10 +79,14 @@ func (a AppBar) Build(ctx widgets.BuildContext) widgets.Widget {
 	title := t.Text.TitleLarge
 	title.Color = t.Colors.OnSurface
 
+	leading := a.Leading
+	if leading == nil && !a.NoBackButton && widgets.CanPop(ctx) {
+		leading = IconButton{Icon: icons.ArrowBack, OnPressed: func() { widgets.Pop(ctx) }}
+	}
 	row := []widgets.Widget{}
 	start := 16.0
-	if a.Leading != nil {
-		row = append(row, widgets.Padding{Padding: geom.EdgeInsets{Left: 4}, Child: a.Leading})
+	if leading != nil {
+		row = append(row, widgets.Padding{Padding: geom.EdgeInsets{Left: 4}, Child: leading})
 		start = 4
 	}
 	var center widgets.Widget = widgets.SizedBox{}

@@ -22,6 +22,8 @@ func start(root widgets.Widget) {
 	binding := widgets.NewBinding(root)
 	binding.RequestFrame = android.RequestFrame
 	binding.SetSystemBars = android.SetSystemBars
+	binding.SetHandlesBack = android.SetHandlesBack
+	android.SetBack(binding.HandleBack)
 	binding.SetClock(uiClock{})
 
 	r := &renderer{binding: binding, scale: 1}

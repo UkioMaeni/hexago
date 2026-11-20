@@ -19,6 +19,7 @@ import (
 	"slices"
 
 	"hexago/ui/animation"
+	"hexago/ui/geom"
 	"hexago/ui/gestures"
 	"hexago/ui/rendering"
 )
@@ -192,13 +193,40 @@ func (e *Element) FindBox() rendering.Box {
 	return nil
 }
 
+// SizeOf — размер виджета ctx после последней раскладки (его первого render-бокса), как context.size
+// во Flutter. До первой раскладки — нулевой. Читают его в обработчиках событий, а не в Build.
+func SizeOf(ctx BuildContext) geom.Size {
+	if b := ctx.element().FindBox(); b != nil {
+		return rendering.SizeOf(b)
+	}
+	return geom.Size{}
+}
+
 // BuildOwner управляет перестройками: помнит «грязные» элементы и перестраивает их по порядку.
 type BuildOwner struct {
-	dirty     []*Element
-	gestures  gestures.Env        // арена и часы для распознавателей жестов (их задаёт Binding)
-	scheduler animation.Scheduler // кадры для анимаций (Binding)
+	dirty      []*Element
+	gestures   gestures.Env        // арена и часы для распознавателей жестов (их задаёт Binding)
+	scheduler  animation.Scheduler // кадры для анимаций (Binding)
+	navigators []*Navigator        // в порядке появления: кнопка «Назад» идёт к последнему, кому есть что закрыть
 	// OnNeedsBuild вызывается, когда появился первый «грязный» элемент — пора просить кадр.
 	OnNeedsBuild func()
+}
+
+// requestFrame просит кадр без перестройки: изменилось то, что боксы берут сами (анимация маршрута).
+func (o *BuildOwner) requestFrame() {
+	if o.OnNeedsBuild != nil {
+		o.OnNeedsBuild()
+	}
+}
+
+// backNavigator — Navigator, которому достанется кнопка «Назад»: последний, у кого есть что закрыть.
+func (o *BuildOwner) backNavigator() *Navigator {
+	for i := len(o.navigators) - 1; i >= 0; i-- {
+		if n := o.navigators[i]; n.Mounted() && n.CanPop() {
+			return n
+		}
+	}
+	return nil
 }
 
 func (e *Element) markNeedsBuild() {

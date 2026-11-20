@@ -29,6 +29,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0021](0021-material-components.md) | Компоненты Material 3 и значки как пути SVG | принято |
 | [0022](0022-animations-and-scrolling.md) | Анимации и прокрутка | принято |
 | [0023](0023-fast-software-rendering.md) | Быстрая программная отрисовка | принято |
+| [0024](0024-navigator-and-dialogs.md) | Навигация: Navigator, переходы экранов, диалоги и нижняя панель | принято |
 
 Шаблон нового ADR:
 

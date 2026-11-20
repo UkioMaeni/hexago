@@ -84,8 +84,13 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 и текста, перерисовка только изменившейся части экрана. Полный кадр 41 → 8,5 мс, на эмуляторе 57–61 кадр
 в секунду вместо 20.
 
-Дальше: полоса прокрутки, растяжение у края, ленивые строки разной высоты, `Hero` и переходы между экранами
-(вместе с `Navigator`).
+Готово ([ADR-0024](adr/0024-navigator-and-dialogs.md)): навигация — `Navigator` (его ставит `App`), `Push`, `Pop`,
+`PopWith`, `PushRoute`, `PushReplacement`, `PopToFirst`, `CanPop`, окна поверх экрана с затемнением, кнопка «Назад»
+Android (на Android 13+ — `OnBackInvokedCallback`), `FadeTransition`, `SlideTransition`, переходы экранов снимком
+(кадр перехода 16 → 2,5 мс).
+
+Дальше: полоса прокрутки, растяжение у края, ленивые строки разной высоты, `Hero`, запрет «Назад» (`PopScope`),
+жест «Назад» с предпросмотром, `Overlay`.
 
 ## P7 — Material 🔨
 
@@ -100,8 +105,10 @@ Widget → Element → RenderObject: `StatelessWidget`, состояние в с
 
 Волна нажатия, плавный `Switch`, бесконечные индикаторы — готово (ADR-0022).
 
-Впереди: схема из одного цвета (fromSeed), `SnackBar`,
-диалоги, `Drawer`, `Navigator`, меню, чипы, вкладки.
+Готово (ADR-0024): переход экранов Material, `AlertDialog`, `Dialog`, `ShowDialog`, нижняя панель
+(`ShowBottomSheet`, тянется пальцем), стрелка «Назад» в `AppBar`.
+
+Впереди: схема из одного цвета (fromSeed), `SnackBar`, `Drawer`, меню, чипы, вкладки.
 
 ## P8 — Ввод текста и изображения ⏳
 

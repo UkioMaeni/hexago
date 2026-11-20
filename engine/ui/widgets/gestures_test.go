@@ -71,16 +71,21 @@ func TestTapChangesState(t *testing.T) {
 
 // findState — живой экземпляр виджета с состоянием типа T.
 func findState[T any](e *w.Element) T {
+	v, _ := lookState[T](e)
+	return v
+}
+
+func lookState[T any](e *w.Element) (T, bool) {
 	if v, ok := e.State().(T); ok {
-		return v
+		return v, true
 	}
 	for _, c := range e.Children() {
-		if v := findState[T](c); any(v) != nil {
-			return v
+		if v, ok := lookState[T](c); ok {
+			return v, true
 		}
 	}
 	var zero T
-	return zero
+	return zero, false
 }
 
 // layered — фон и передний слой во весь экран; front оборачивает передний слой.

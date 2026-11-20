@@ -29,6 +29,9 @@ func (c *Canvas) DrawShadow(rr geom.RRect, col Color, sigma float64) {
 	m := c.st.m
 	q := func(v float64) float64 { return math.Round(v*4) / 4 }
 	key := shadowKey{
+		// Размер маски в пикселях — тоже часть ключа: у фигур с одинаковыми округлёнными размерами
+		// и сдвигом маска может отличаться на пиксель (фигура плавно едет — переход экрана).
+		bw: b.Dx(), bh: b.Dy(),
 		w: q(d.Width()), h: q(d.Height()), sigma: q(s),
 		fx: q(d.Left - math.Floor(d.Left)), fy: q(d.Top - math.Floor(d.Top)),
 		r: [4]float64{q(rr.Radius.TopLeft.X * m.A), q(rr.Radius.TopRight.X * m.A),
@@ -55,6 +58,7 @@ func (c *Canvas) DrawShadow(rr geom.RRect, col Color, sigma float64) {
 
 // shadowKey — по чему тени одинаковы (всё — в пикселях экрана, с шагом 1/4 пикселя).
 type shadowKey struct {
+	bw, bh              int // размер маски
 	w, h, sigma, fx, fy float64
 	r                   [4]float64
 	axis                bool // без поворота (с поворотом тени не кешируются)

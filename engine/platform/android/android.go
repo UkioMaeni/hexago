@@ -21,7 +21,7 @@ static void hx_string_release(JNIEnv* env, jstring s, const char* chars) {
 // Статические методы HexagoActivity, которые Go вызывает сам: requestFrame и wakeUp.
 static JavaVM* hx_vm;
 static jclass hx_class;
-static jmethodID hx_request_frame_id, hx_wake_up_id, hx_system_bars_id;
+static jmethodID hx_request_frame_id, hx_wake_up_id, hx_system_bars_id, hx_handles_back_id;
 
 static void hx_init(JNIEnv* env, jclass clazz) {
 	(*env)->GetJavaVM(env, &hx_vm);
@@ -29,6 +29,7 @@ static void hx_init(JNIEnv* env, jclass clazz) {
 	hx_request_frame_id = (*env)->GetStaticMethodID(env, clazz, "requestFrame", "()V");
 	hx_wake_up_id = (*env)->GetStaticMethodID(env, clazz, "wakeUp", "()V");
 	hx_system_bars_id = (*env)->GetStaticMethodID(env, clazz, "setSystemBars", "(Z)V");
+	hx_handles_back_id = (*env)->GetStaticMethodID(env, clazz, "setHandlesBack", "(Z)V");
 }
 
 // hx_call вызывает статический метод (без аргументов или с одним boolean) из любого потока:
@@ -53,6 +54,7 @@ static void hx_call(jmethodID m, jboolean arg) {
 static void hx_request_frame(void) { hx_call(hx_request_frame_id, JNI_FALSE); }
 static void hx_wake_up(void) { hx_call(hx_wake_up_id, JNI_FALSE); }
 static void hx_system_bars(jboolean light) { hx_call(hx_system_bars_id, light); }
+static void hx_handles_back(jboolean handles) { hx_call(hx_handles_back_id, handles); }
 */
 import "C"
 
@@ -156,6 +158,29 @@ func SetSystemBars(lightIcons bool) {
 		v = C.JNI_TRUE
 	}
 	C.hx_system_bars(v)
+}
+
+// SetHandlesBack сообщает Android, есть ли что закрыть кнопкой «Назад»: пока есть, она приходит в
+// обработчик SetBack, пока нет — система обрабатывает её сама. Из любого потока.
+func SetHandlesBack(handles bool) {
+	v := C.jboolean(C.JNI_FALSE)
+	if handles {
+		v = C.JNI_TRUE
+	}
+	C.hx_handles_back(v)
+}
+
+var back func() bool
+
+// SetBack задаёт обработчик кнопки «Назад» (в потоке интерфейса): true — обработано.
+func SetBack(f func() bool) { back = f }
+
+//export Java_dev_hexago_HexagoActivity_nativeOnBack
+func Java_dev_hexago_HexagoActivity_nativeOnBack(env *C.JNIEnv, clazz C.jclass) C.jboolean {
+	if back != nil && back() {
+		return C.JNI_TRUE
+	}
+	return C.JNI_FALSE
 }
 
 // RequestFrame просит Android нарисовать новый кадр на ближайшей развёртке экрана.

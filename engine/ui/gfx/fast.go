@@ -23,12 +23,18 @@ func mix(dst, r, g, b, a uint32) uint32 {
 	if a >= 255 {
 		return 0xFF000000 | b<<16 | g<<8 | r
 	}
-	inv := 255 - a
-	nr := div255(r*a + (dst&0xFF)*inv)
-	ng := div255(g*a + (dst>>8&0xFF)*inv)
-	nb := div255(b*a + (dst>>16&0xFF)*inv)
-	na := div255(255*a + (dst>>24)*inv)
-	return na<<24 | nb<<16 | ng<<8 | nr
+	return mix2(dst, (b<<16|r)*a+0x00800080, (0xFF<<16|g)*a+0x00800080, 255-a)
+}
+
+// mix2 — смешивание по два канала за раз: R и B лежат в одном числе (0x00BB00RR), G и A — в другом,
+// каждый в своих 16 битах. srcRB и srcGA — каналы цвета, уже умноженные на непрозрачность, плюс
+// 0x80 на округление; inv = 255 − непрозрачность. Результат тот же, что у div255 по каждому каналу.
+func mix2(dst, srcRB, srcGA, inv uint32) uint32 {
+	rb := (dst&0x00FF00FF)*inv + srcRB
+	rb = (rb + (rb>>8)&0x00FF00FF) >> 8 & 0x00FF00FF
+	ga := (dst>>8&0x00FF00FF)*inv + srcGA
+	ga = (ga + (ga>>8)&0x00FF00FF) >> 8 & 0x00FF00FF
+	return rb | ga<<8
 }
 
 // fillRRectFast заливает скруглённый прямоугольник сплошным цветом без растеризатора.
@@ -143,11 +149,9 @@ func fillSpan(span []uint32, r, g, b, a uint32) {
 		}
 		return
 	}
-	ra, ga, ba, aa := r*a, g*a, b*a, 255*a
-	inv := 255 - a
+	srcRB, srcGA, inv := (b<<16|r)*a+0x00800080, (0xFF<<16|g)*a+0x00800080, 255-a
 	for i, d := range span {
-		span[i] = div255(aa+(d>>24)*inv)<<24 | div255(ba+(d>>16&0xFF)*inv)<<16 |
-			div255(ga+(d>>8&0xFF)*inv)<<8 | div255(ra+(d&0xFF)*inv)
+		span[i] = mix2(d, srcRB, srcGA, inv)
 	}
 }
 
@@ -171,4 +175,51 @@ func ellipseCover(px, py, cx, cy float64, r geom.Radius) float64 {
 		return 1
 	}
 	return math.Max(0, math.Min(1, 0.5-f/grad))
+}
+
+// DrawLayer переносит на холст готовую картинку слоя layer — другого холста, на котором рисовали
+// с прозрачного фона (его цвета уже умножены на свою непрозрачность). Левый верхний пиксель слоя
+// ложится в точку at (пиксели холста, преобразование не применяется). Учитываются обрезка и общая
+// прозрачность холста. opaque — в слое нет полупрозрачных пикселей: строки просто копируются.
+//
+// Так экран во время перехода рисуется один раз, а в кадрах только переносится со сдвигом.
+func (c *Canvas) DrawLayer(layer *Canvas, at image.Point, opaque bool) {
+	r := image.Rect(at.X, at.Y, at.X+layer.width, at.Y+layer.height).Intersect(c.st.clip)
+	a := uint32(c.st.alpha*255 + 0.5)
+	if r.Empty() || a == 0 {
+		return
+	}
+	mask := c.st.clipMask
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		dst := c.pix[y*c.stride+r.Min.X : y*c.stride+r.Max.X]
+		src := layer.pix[(y-at.Y)*layer.stride+r.Min.X-at.X:]
+		src = src[:len(dst)]
+		if opaque && a == 255 && mask == nil {
+			copy(dst, src)
+			continue
+		}
+		maskRow := 0
+		if mask != nil {
+			maskRow = (y-mask.Rect.Min.Y)*mask.Stride + r.Min.X - mask.Rect.Min.X
+		}
+		for i, p := range src {
+			k := a
+			if mask != nil {
+				k = div255(k * uint32(mask.Pix[maskRow+i]))
+			}
+			if k == 0 || p>>24 == 0 {
+				continue
+			}
+			if k == 255 && p>>24 == 255 {
+				dst[i] = p
+				continue
+			}
+			// Пиксель слоя с непрозрачностью k: q = p·k; результат = q + dst·(1 − q.A).
+			qrb := (p&0x00FF00FF)*k + 0x00800080
+			qrb = (qrb + (qrb>>8)&0x00FF00FF) >> 8 & 0x00FF00FF
+			qga := (p>>8&0x00FF00FF)*k + 0x00800080
+			qga = (qga + (qga>>8)&0x00FF00FF) >> 8 & 0x00FF00FF
+			dst[i] = mix2(dst[i], qrb*255+0x00800080, qga*255+0x00800080, 255-qga>>16)
+		}
+	}
 }

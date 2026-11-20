@@ -19,6 +19,8 @@ import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 /**
  * Activity движка Hexago — как FlutterActivity во Flutter.
@@ -42,6 +44,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
             boolean full);
     private static native void nativeOnPointer(int kind, int pointer, float x, float y, long timeMillis);
     private static native void nativeRunTasks();
+    private static native boolean nativeOnBack();
 
     // Виды событий касания — как gestures.PointerKind в Go.
     private static final int POINTER_DOWN = 0, POINTER_MOVE = 1, POINTER_UP = 2, POINTER_CANCEL = 3;
@@ -49,8 +52,12 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static HexagoActivity current; // Activity на экране — ей Go заказывает кадры
     private static boolean frameScheduled;
+    // Есть ли в Go что закрыть кнопкой «Назад» (Navigator может вернуться). Статическое — переживает
+    // пересоздание Activity.
+    private static boolean handlesBack;
 
     private SurfaceView view;
+    private Object backCallback; // OnBackInvokedCallback (Android 13+), пока Go обрабатывает «Назад»
 
     /**
      * Go просит новый кадр (что-то изменилось — например, SetState). Кадр рисуется на ближайшей
@@ -83,6 +90,20 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         });
     }
 
+    /**
+     * Go сообщает, есть ли что закрыть кнопкой «Назад». Пока есть — «Назад» уходит в Go (закрывает
+     * верхний экран или окно); пока нет — её обрабатывает система (сворачивает приложение, с анимацией
+     * «предсказания» на Android 13+). Вызывается из любого потока.
+     */
+    static void setHandlesBack(boolean handles) {
+        main.post(() -> {
+            handlesBack = handles;
+            if (current != null) {
+                current.updateBackCallback();
+            }
+        });
+    }
+
     /** Go положил задачи для потока интерфейса (app.Post, таймеры жестов) — выполнить их там. */
     static void wakeUp() {
         main.post(HexagoActivity::nativeRunTasks);
@@ -111,6 +132,37 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         });
         setContentView(view);
         edgeToEdge();
+        updateBackCallback();
+    }
+
+    /**
+     * С Android 13 «Назад» приходит через OnBackInvokedDispatcher (onBackPressed для приложений под
+     * Android 16 больше не вызывается). Обратный вызов зарегистрирован, только пока Go есть что закрыть:
+     * иначе система обрабатывает «Назад» сама.
+     */
+    private void updateBackCallback() {
+        if (Build.VERSION.SDK_INT < 33) {
+            return;
+        }
+        OnBackInvokedDispatcher d = getOnBackInvokedDispatcher();
+        if (handlesBack && backCallback == null) {
+            OnBackInvokedCallback cb = HexagoActivity::nativeOnBack;
+            backCallback = cb;
+            d.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb);
+        } else if (!handlesBack && backCallback != null) {
+            d.unregisterOnBackInvokedCallback((OnBackInvokedCallback) backCallback);
+            backCallback = null;
+        }
+    }
+
+    // До Android 13 «Назад» приходит сюда.
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (handlesBack && nativeOnBack()) {
+            return;
+        }
+        super.onBackPressed();
     }
 
     // Тема системы, размер шрифта и т. п. меняются без пересоздания Activity (configChanges) —

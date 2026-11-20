@@ -15,9 +15,10 @@ import (
 
 // damageState — то, что бокс помнит для учёта повреждений.
 type damageState struct {
-	dirty   bool      // поменял то, как рисуется
-	prev    geom.Rect // где был на экране в прошлом кадре (dp, с запасом PaintOverflow)
-	hasPrev bool
+	dirty           bool      // поменял то, как рисуется
+	childrenChanged bool      // сменились дети (снимок вокруг надо перерисовать)
+	prev            geom.Rect // где был на экране в прошлом кадре (dp, с запасом PaintOverflow)
+	hasPrev         bool
 }
 
 // MarkNeedsPaint помечает, что бокс рисуется иначе, чем в прошлом кадре.
@@ -31,6 +32,18 @@ type PaintOverflower interface {
 // ChildTransformer — бокс, который рисует детей с преобразованием (TransformBox).
 type ChildTransformer interface {
 	ChildTransform() geom.Affine
+}
+
+// PaintChanger — бокс, который берёт то, как рисуется, из анимации сам, без перестройки (FadeBox):
+// PaintChanged сообщает, изменился ли его вид с прошлого раза. Спрашивается раз за кадр.
+type PaintChanger interface {
+	PaintChanged() bool
+}
+
+// ChildPainter — бокс, который рисует не всех своих детей (TheatreBox — только открытые слои):
+// учёт повреждений обходит только тех, кого он рисует.
+type ChildPainter interface {
+	PaintedChildren() []Box
 }
 
 // LayoutOnly — бокс, который сам ничего не рисует, только расставляет детей (Row, Padding…):
@@ -63,8 +76,8 @@ func CollectDamage(root Box) geom.Rect {
 		damage = geom.Rect{Left: math.Min(damage.Left, r.Left), Top: math.Min(damage.Top, r.Top),
 			Right: math.Max(damage.Right, r.Right), Bottom: math.Max(damage.Bottom, r.Bottom)}
 	}
-	var walk func(b Box, m geom.Affine)
-	walk = func(b Box, m geom.Affine) {
+	var walk func(b Box, m geom.Affine, snap *snapshotScope)
+	walk = func(b Box, m geom.Affine, snap *snapshotScope) {
 		n := b.node()
 		margin := overflowMargin
 		if o, ok := b.(PaintOverflower); ok {
@@ -72,24 +85,72 @@ func CollectDamage(root Box) geom.Rect {
 		}
 		cur := m.MapRect(geom.RectFromSize(geom.Zero, n.size)).Inflate(margin)
 		d := &n.damage
+		if p, ok := b.(PaintChanger); ok && p.PaintChanged() {
+			d.dirty = true
+		}
+		// Снимок (SnapshotBox) годится, пока всё внутри только едет вместе с ним.
+		if snap != nil && !snap.box.valid {
+			snap = nil // уже перерисовывается целиком
+		}
+		if snap != nil && (d.dirty || d.childrenChanged || !d.hasPrev ||
+			!nearRect(cur, d.prev.Translate(geom.Offset{X: snap.dx, Y: snap.dy}))) {
+			snap.invalidate()
+			snap = nil
+		}
+		if s, ok := b.(*SnapshotBox); ok {
+			sameSize := d.hasPrev && math.Abs(cur.Width()-d.prev.Width()) < 1e-6 && math.Abs(cur.Height()-d.prev.Height()) < 1e-6
+			if !sameSize || d.dirty || s.walked+1 != damageFrame {
+				s.valid = false // новый, изменился или не виден прошлый кадр — внутри могли быть перемены
+			}
+			s.walked = damageFrame
+			snap = &snapshotScope{box: s, parent: snap, dx: cur.Left - d.prev.Left, dy: cur.Top - d.prev.Top}
+		}
 		if d.dirty || !d.hasPrev || d.prev != cur {
 			if d.hasPrev {
 				add(d.prev)
 			}
 			add(cur)
 		}
-		d.prev, d.hasPrev, d.dirty = cur, true, false
+		d.prev, d.hasPrev, d.dirty, d.childrenChanged = cur, true, false, false
 		cm := m
 		if t, ok := b.(ChildTransformer); ok {
 			cm = m.Mul(t.ChildTransform())
 		}
-		for _, ch := range n.children {
+		children := n.children
+		if p, ok := b.(ChildPainter); ok {
+			children = p.PaintedChildren()
+		}
+		for _, ch := range children {
 			o := ch.node().offset
-			walk(ch, cm.Mul(geom.Translation(o.X, o.Y)))
+			walk(ch, cm.Mul(geom.Translation(o.X, o.Y)), snap)
 		}
 	}
-	walk(root, geom.Identity)
+	damageFrame++
+	walk(root, geom.Identity, nil)
 	return damage
+}
+
+// damageFrame — номер обхода CollectDamage: по нему снимок узнаёт, что его пропустили (был закрыт).
+var damageFrame uint64
+
+// snapshotScope — снимок, внутри которого идёт обход, и на сколько он сдвинулся с прошлого кадра.
+type snapshotScope struct {
+	box    *SnapshotBox
+	parent *snapshotScope
+	dx, dy float64
+}
+
+// invalidate — внутри снимка что-то изменилось: перерисовать его и все снимки вокруг.
+func (s *snapshotScope) invalidate() {
+	for ; s != nil; s = s.parent {
+		s.box.valid = false
+	}
+}
+
+func nearRect(a, b geom.Rect) bool {
+	const eps = 1e-6
+	return math.Abs(a.Left-b.Left) < eps && math.Abs(a.Top-b.Top) < eps &&
+		math.Abs(a.Right-b.Right) < eps && math.Abs(a.Bottom-b.Bottom) < eps
 }
 
 // PaintSnapshot — параметры рисования бокса до обновления: по ним SamePaint решает, изменилось ли

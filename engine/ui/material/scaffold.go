@@ -44,6 +44,11 @@ func (s Scaffold) Build(ctx widgets.BuildContext) widgets.Widget {
 	if s.BottomBar == nil {
 		bottom = mq.Padding.Bottom
 	}
+	// Экранная клавиатура: тело кончается над ней (поля не прячутся), нижняя панель уходит под неё.
+	keyboard := mq.ViewInsets.Bottom
+	if keyboard > 0 {
+		bodyMQ.Padding.Bottom, bodyMQ.ViewInsets.Bottom, bottom = 0, 0, 0
+	}
 	layers := []widgets.Widget{
 		widgets.PositionedFill(widgets.MediaQuery{Data: bodyMQ, Child: s.Body}),
 		widgets.Positioned{Left: new(0.0), Right: new(0.0), Bottom: new(bottom), Child: scaffoldBottom{
@@ -55,11 +60,11 @@ func (s Scaffold) Build(ctx widgets.BuildContext) widgets.Widget {
 		column = append(column, s.AppBar)
 	}
 	column = append(column, widgets.Expanded{Child: widgets.Stack{Children: layers}})
-	if s.BottomBar != nil {
+	if s.BottomBar != nil && keyboard == 0 {
 		column = append(column, s.BottomBar)
 	}
-	var root widgets.Widget = widgets.ColoredBox{Color: bg,
-		Child: widgets.Column{CrossAxisAlignment: rendering.CrossAxisStretch, Children: column}}
+	var root widgets.Widget = widgets.ColoredBox{Color: bg, Child: widgets.Padding{Padding: geom.EdgeInsets{Bottom: keyboard},
+		Child: widgets.Column{CrossAxisAlignment: rendering.CrossAxisStretch, Children: column}}}
 	if s.Drawer != nil {
 		root = widgets.Stack{Fit: rendering.StackExpand, Children: []widgets.Widget{root,
 			widgets.Positioned{Left: new(0.0), Top: new(0.0), Bottom: new(0.0),

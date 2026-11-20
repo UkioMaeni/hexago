@@ -24,6 +24,15 @@ func start(root widgets.Widget) {
 	binding.SetSystemBars = android.SetSystemBars
 	binding.SetHandlesBack = android.SetHandlesBack
 	android.SetBack(binding.HandleBack)
+	binding.SetTextInput(keyboard{})
+	android.SetEditing(func(s android.EditingState) {
+		binding.HandleTextEditing(widgets.TextEditingValue{
+			Text:      s.Text,
+			Selection: widgets.TextSelection{Base: s.SelStart, Extent: s.SelEnd},
+			Composing: widgets.TextRange{Start: max(0, s.ComposeStart), End: max(0, s.ComposeEnd)},
+		})
+	})
+	android.SetTextAction(func(a int) { binding.HandleTextAction(widgets.TextInputAction(a)) })
 	binding.SetClock(uiClock{})
 
 	r := &renderer{binding: binding, scale: 1}
@@ -59,6 +68,7 @@ func (r *renderer) Prepare(f android.FrameInfo) image.Rectangle {
 			Left: float64(f.Insets[0]) / f.Scale, Top: float64(f.Insets[1]) / f.Scale,
 			Right: float64(f.Insets[2]) / f.Scale, Bottom: float64(f.Insets[3]) / f.Scale,
 		},
+		ViewInsets:         geom.EdgeInsets{Bottom: float64(f.Keyboard) / f.Scale},
 		PlatformBrightness: brightness,
 	})
 	if r.unpainted {
@@ -93,3 +103,22 @@ func (uiClock) AfterFunc(d time.Duration, f func()) func() {
 		t.Stop()
 	}
 }
+
+// keyboard — экранная (и физическая) клавиатура Android для полей ввода.
+type keyboard struct{}
+
+func editingState(v widgets.TextEditingValue) android.EditingState {
+	return android.EditingState{Text: v.Text, SelStart: v.Selection.Base, SelEnd: v.Selection.Extent,
+		ComposeStart: v.Composing.Start, ComposeEnd: v.Composing.End}
+}
+
+func (keyboard) Show(cfg widgets.TextInputConfig, v widgets.TextEditingValue) {
+	android.ShowKeyboard(android.KeyboardConfig{
+		Keyboard: int(cfg.Keyboard), Action: int(cfg.Action), Capitalize: int(cfg.Capitalize),
+		Multiline: cfg.Multiline, Obscure: cfg.Obscure, NoAutocorrect: cfg.NoAutocorrect,
+	}, editingState(v))
+}
+
+func (keyboard) Update(v widgets.TextEditingValue) { android.UpdateEditing(editingState(v)) }
+
+func (keyboard) Hide() { android.HideKeyboard() }

@@ -163,6 +163,7 @@ func (n *Navigator) Push(r Route) *animation.Controller {
 	if r.Page == nil {
 		panic("widgets: Push без содержимого: Route.Page = nil")
 	}
+	n.element.owner.setFocus(nil) // новый экран или окно — клавиатура предыдущего прячется
 	e := n.newEntry(r)
 	n.routes = append(n.routes, e)
 	n.relink()
@@ -177,6 +178,7 @@ func (n *Navigator) PushReplacement(r Route) {
 	if r.Page == nil {
 		panic("widgets: PushReplacement без содержимого: Route.Page = nil")
 	}
+	n.element.owner.setFocus(nil)
 	old := n.top()
 	e := n.newEntry(r)
 	if old != nil {

@@ -5,11 +5,13 @@ import (
 	"hexago/ui/gfx"
 )
 
-// MediaQueryData — сведения об экране: размер в dp, плотность, отступы системных панелей, тема системы.
+// MediaQueryData — сведения об экране: размер в dp, плотность, отступы системных панелей и клавиатуры,
+// тема системы.
 type MediaQueryData struct {
 	Size               geom.Size       // размер экрана в логических пикселях (dp)
 	DevicePixelRatio   float64         // физических пикселей в одном dp
 	Padding            geom.EdgeInsets // области, занятые строкой состояния, вырезом, навигацией
+	ViewInsets         geom.EdgeInsets // что закрывает экранная клавиатура (снизу — её высота), dp
 	PlatformBrightness gfx.Brightness  // светлая или тёмная тема в настройках телефона
 }
 

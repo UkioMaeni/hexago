@@ -220,6 +220,12 @@ type BuildOwner struct {
 	gestures   gestures.Env        // арена и часы для распознавателей жестов (их задаёт Binding)
 	scheduler  animation.Scheduler // кадры для анимаций (Binding)
 	navigators []*Navigator        // в порядке появления: кнопка «Назад» идёт к последнему, кому есть что закрыть
+
+	focus         *FocusNode      // у кого фокус ввода
+	focusNodes    []*FocusNode    // узлы фокуса виджетов в дереве
+	textInput     TextInput       // клавиатура платформы
+	textClient    textInputClient // поле, к которому она подключена
+	keyboardShown bool
 	// OnNeedsBuild вызывается, когда появился первый «грязный» элемент — пора просить кадр.
 	OnNeedsBuild func()
 }

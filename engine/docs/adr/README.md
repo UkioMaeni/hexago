@@ -31,6 +31,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0023](0023-fast-software-rendering.md) | Быстрая программная отрисовка | принято |
 | [0024](0024-navigator-and-dialogs.md) | Навигация: Navigator, переходы экранов, диалоги и нижняя панель | принято |
 | [0025](0025-snackbar-drawer-menus.md) | SnackBar, боковая панель и меню | принято |
+| [0026](0026-text-input.md) | Ввод текста: поля, фокус, клавиатура Android | принято |
 
 Шаблон нового ADR:
 

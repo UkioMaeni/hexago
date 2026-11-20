@@ -13,7 +13,6 @@ import android.view.DisplayCutout;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -40,11 +39,13 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     // Реализации — в Go, пакет hexago/platform/android.
     private static native void nativeOnCreate(String cacheDir);
     private static native void nativeDraw(Surface surface, float density,
-            int insetLeft, int insetTop, int insetRight, int insetBottom, boolean darkTheme, long frameTimeNanos,
-            boolean full);
+            int insetLeft, int insetTop, int insetRight, int insetBottom, int keyboard, boolean darkTheme,
+            long frameTimeNanos, boolean full);
     private static native void nativeOnPointer(int kind, int pointer, float x, float y, long timeMillis);
     private static native void nativeRunTasks();
     private static native boolean nativeOnBack();
+    private static native void nativeOnEditing(String text, int selStart, int selEnd, int composeStart, int composeEnd);
+    private static native void nativeOnTextAction(int action);
 
     // Виды событий касания — как gestures.PointerKind в Go.
     private static final int POINTER_DOWN = 0, POINTER_MOVE = 1, POINTER_UP = 2, POINTER_CANCEL = 3;
@@ -56,7 +57,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     // пересоздание Activity.
     private static boolean handlesBack;
 
-    private SurfaceView view;
+    private HexagoView view;
     private Object backCallback; // OnBackInvokedCallback (Android 13+), пока Go обрабатывает «Назад»
 
     /**
@@ -104,6 +105,43 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         });
     }
 
+    /** Go: подключить клавиатуру к полю ввода и показать её (см. HexagoView.show). Из любого потока. */
+    static void showKeyboard(int keyboard, int action, int flags, int capitalize, String text, int selStart,
+            int selEnd, int composeStart, int composeEnd) {
+        main.post(() -> {
+            if (current != null) {
+                current.view.show(keyboard, action, flags, capitalize, text, selStart, selEnd, composeStart, composeEnd);
+            }
+        });
+    }
+
+    /** Go: текст поля поменяло приложение. Из любого потока. */
+    static void updateEditing(String text, int selStart, int selEnd, int composeStart, int composeEnd) {
+        main.post(() -> {
+            if (current != null) {
+                current.view.update(text, selStart, selEnd, composeStart, composeEnd);
+            }
+        });
+    }
+
+    /** Go: спрятать клавиатуру. Из любого потока. */
+    static void hideKeyboard() {
+        main.post(() -> {
+            if (current != null) {
+                current.view.hide();
+            }
+        });
+    }
+
+    // Клавиатура изменила текст поля или нажата её кнопка ввода — в Go.
+    static void onEditing(String text, int selStart, int selEnd, int composeStart, int composeEnd) {
+        nativeOnEditing(text, selStart, selEnd, composeStart, composeEnd);
+    }
+
+    static void onTextAction(int action) {
+        nativeOnTextAction(action);
+    }
+
     /** Go положил задачи для потока интерфейса (app.Post, таймеры жестов) — выполнить их там. */
     static void wakeUp() {
         main.post(HexagoActivity::nativeRunTasks);
@@ -118,7 +156,9 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         nativeOnCreate(getCacheDir().getAbsolutePath());
 
         // Поверхность во весь экран. Сама она ничего не рисует — рисует Go.
-        view = new SurfaceView(this);
+        view = new HexagoView(this);
+        // Высоту экранной клавиатуры окно сообщает отступом снизу (WindowInsets) — поля не прячутся под ней.
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
         view.getHolder().addCallback(this);
         // Отступы панелей могут поменяться и без смены размера поверхности — перерисовываем.
         view.setOnApplyWindowInsetsListener((v, insets) -> {
@@ -257,7 +297,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         int[] insets = systemInsets();
         boolean dark = (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK)
                 == Configuration.UI_MODE_NIGHT_YES;
-        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3], dark, frameTimeNanos, full);
+        nativeDraw(surface, density, insets[0], insets[1], insets[2], insets[3], insets[4], dark, frameTimeNanos, full);
     }
 
     /**
@@ -317,14 +357,16 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     private int[] systemInsets() {
         WindowInsets wi = view.getRootWindowInsets();
         if (wi == null) {
-            return new int[4];
+            return new int[5];
         }
         if (Build.VERSION.SDK_INT >= 30) {
             Insets i = wi.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
-            return new int[] {i.left, i.top, i.right, i.bottom};
+            return new int[] {i.left, i.top, i.right, i.bottom, wi.getInsets(WindowInsets.Type.ime()).bottom};
         }
+        // До Android 11 клавиатура входит в нижний отступ окна; без неё — «стабильный» отступ.
         int[] r = {wi.getSystemWindowInsetLeft(), wi.getSystemWindowInsetTop(),
-                wi.getSystemWindowInsetRight(), wi.getSystemWindowInsetBottom()};
+                wi.getSystemWindowInsetRight(), wi.getStableInsetBottom(),
+                Math.max(0, wi.getSystemWindowInsetBottom() - wi.getStableInsetBottom())};
         if (Build.VERSION.SDK_INT >= 28 && wi.getDisplayCutout() != null) {
             DisplayCutout c = wi.getDisplayCutout();
             r[0] = Math.max(r[0], c.getSafeInsetLeft());

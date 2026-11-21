@@ -109,7 +109,7 @@ func Layout(s string, style Style, maxWidth float64) *Paragraph {
 		p.ascent += (style.LineHeight - p.line) / 2
 		p.line = style.LineHeight
 	}
-	measure := func(t string) float64 { return advance(face, t, style.LetterSpacing) }
+	measure := func(t string) float64 { return advance(face, style.size(), t, style.LetterSpacing) }
 
 	for _, raw := range strings.Split(s, "\n") {
 		words := strings.FieldsFunc(raw, unicode.IsSpace)
@@ -160,12 +160,22 @@ func (p *Paragraph) Paint(c *gfx.Canvas, at geom.Offset, align Align, boxWidth f
 			x += boxWidth - p.widths[i]
 		}
 		baseline := m.Apply(geom.Offset{X: x, Y: at.Y + p.ascent + float64(i)*p.line})
-		drawLine(c, face, line, baseline, col, p.style.LetterSpacing*k)
+		drawLine(c, face, p.style.size()*k, line, baseline, col, p.style.LetterSpacing*k)
 	}
 }
 
-// advance — ширина строки с разрядкой spacing после каждой буквы.
-func advance(face font.Face, s string, spacing float64) float64 {
+// advance — ширина строки с разрядкой spacing после каждой буквы: шрифтом face, а символы, которых в нём
+// нет, — запасным шрифтом размера size.
+func advance(face font.Face, size float64, s string, spacing float64) float64 {
+	w := 0.0
+	for _, r := range runs(s) {
+		w += runWidth(face, size, r, spacing)
+	}
+	return w
+}
+
+// advanceGo — ширина строки шрифтом Go.
+func advanceGo(face font.Face, s string, spacing float64) float64 {
 	if spacing == 0 {
 		return fx(font.MeasureString(face, s))
 	}
@@ -177,10 +187,30 @@ func advance(face font.Face, s string, spacing float64) float64 {
 	return w
 }
 
-// drawLine рисует строку с базовой линией в точке экрана origin (в пикселях);
-// spacing — разрядка в пикселях. Маска строки берётся из кеша: текст на экране от кадра к кадру
+// drawLine рисует строку с базовой линией в точке экрана origin (в пикселях): шрифтом face, а символы,
+// которых в нём нет, — запасным шрифтом размера size пикселей. spacing — разрядка в пикселях.
+func drawLine(c *gfx.Canvas, face font.Face, size float64, s string, origin geom.Offset, col gfx.Color, spacing float64) {
+	parts := runs(s)
+	if len(parts) == 1 && !parts[0].fallback {
+		drawGoRun(c, face, s, origin, col, spacing)
+		return
+	}
+	x := origin.X
+	for _, r := range parts {
+		if r.fallback {
+			if p := renderFallback(r.s, size, col); p.img != nil {
+				c.DrawPixels(p.img, image.Point{X: int(math.Round(x)), Y: int(math.Round(origin.Y - p.ascent))})
+			}
+		} else {
+			drawGoRun(c, face, r.s, geom.Offset{X: x, Y: origin.Y}, col, spacing)
+		}
+		x += runWidth(face, size, r, spacing)
+	}
+}
+
+// drawGoRun рисует строку шрифтом Go. Маска строки берётся из кеша: текст на экране от кадра к кадру
 // обычно тот же, а растеризация букв — дорогая.
-func drawLine(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col gfx.Color, spacing float64) {
+func drawGoRun(c *gfx.Canvas, face font.Face, s string, origin geom.Offset, col gfx.Color, spacing float64) {
 	ix, iy := int(math.Floor(origin.X)), int(math.Floor(origin.Y))
 	// Дробная часть позиции (с шагом 1/4 пикселя) — чтобы буквы стояли точно, а не прыгали по пикселям.
 	fx := math.Round((origin.X-float64(ix))*4) / 4
@@ -251,6 +281,12 @@ func (c *lineCache) get(k lineKey) *lineMask {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.m[k]
+}
+
+func (c *lineCache) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.m, c.bytes = nil, 0
 }
 
 func (c *lineCache) put(k lineKey, l *lineMask) {

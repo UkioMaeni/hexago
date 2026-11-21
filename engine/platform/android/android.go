@@ -23,6 +23,8 @@ static JavaVM* hx_vm;
 static jclass hx_class;
 static jmethodID hx_request_frame_id, hx_wake_up_id, hx_system_bars_id, hx_handles_back_id;
 static jmethodID hx_show_keyboard_id, hx_update_editing_id, hx_hide_keyboard_id;
+static jmethodID hx_measure_text_id, hx_render_text_id;
+static jmethodID hx_set_clip_id, hx_get_clip_id, hx_has_clip_id;
 
 static void hx_init(JNIEnv* env, jclass clazz) {
 	(*env)->GetJavaVM(env, &hx_vm);
@@ -34,6 +36,11 @@ static void hx_init(JNIEnv* env, jclass clazz) {
 	hx_show_keyboard_id = (*env)->GetStaticMethodID(env, clazz, "showKeyboard", "(IIIILjava/lang/String;IIII)V");
 	hx_update_editing_id = (*env)->GetStaticMethodID(env, clazz, "updateEditing", "(Ljava/lang/String;IIII)V");
 	hx_hide_keyboard_id = (*env)->GetStaticMethodID(env, clazz, "hideKeyboard", "()V");
+	hx_measure_text_id = (*env)->GetStaticMethodID(env, clazz, "measureText", "(Ljava/lang/String;F)F");
+	hx_render_text_id = (*env)->GetStaticMethodID(env, clazz, "renderText", "(Ljava/lang/String;FI)[I");
+	hx_set_clip_id = (*env)->GetStaticMethodID(env, clazz, "setClipboard", "(Ljava/lang/String;)V");
+	hx_get_clip_id = (*env)->GetStaticMethodID(env, clazz, "getClipboard", "()Ljava/lang/String;");
+	hx_has_clip_id = (*env)->GetStaticMethodID(env, clazz, "hasClipboard", "()Z");
 }
 
 // hx_call вызывает статический метод (без аргументов или с одним boolean) из любого потока:
@@ -105,6 +112,117 @@ static void hx_update_editing(const jchar* text, jint n, jint s, jint e, jint cs
 	if (attached) {
 		(*hx_vm)->DetachCurrentThread(hx_vm);
 	}
+}
+
+// Запасной шрифт: ширина и картинка строки системным шрифтом Android.
+static float hx_measure_text(const jchar* text, jint n, float size) {
+	int attached;
+	JNIEnv* env = hx_env(&attached);
+	if (env == NULL || hx_measure_text_id == NULL) {
+		return 0;
+	}
+	jstring str = (*env)->NewString(env, text, n);
+	jfloat w = (*env)->CallStaticFloatMethod(env, hx_class, hx_measure_text_id, str, (jfloat)size);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionClear(env);
+		w = 0;
+	}
+	(*env)->DeleteLocalRef(env, str);
+	if (attached) {
+		(*hx_vm)->DetachCurrentThread(hx_vm);
+	}
+	return w;
+}
+
+// hx_render_text возвращает массив [ширина, высота, база*64, пиксели ARGB…] (освободить free) и его длину.
+static jint* hx_render_text(const jchar* text, jint n, float size, jint color, jint* outLen) {
+	*outLen = 0;
+	int attached;
+	JNIEnv* env = hx_env(&attached);
+	if (env == NULL || hx_render_text_id == NULL) {
+		return NULL;
+	}
+	jstring str = (*env)->NewString(env, text, n);
+	jintArray arr = (jintArray)(*env)->CallStaticObjectMethod(env, hx_class, hx_render_text_id, str, (jfloat)size, color);
+	jint* buf = NULL;
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionClear(env);
+	} else if (arr != NULL) {
+		jsize len = (*env)->GetArrayLength(env, arr);
+		buf = (jint*)malloc(sizeof(jint) * len);
+		if (buf != NULL) {
+			(*env)->GetIntArrayRegion(env, arr, 0, len, buf);
+			*outLen = len;
+		}
+		(*env)->DeleteLocalRef(env, arr);
+	}
+	(*env)->DeleteLocalRef(env, str);
+	if (attached) {
+		(*hx_vm)->DetachCurrentThread(hx_vm);
+	}
+	return buf;
+}
+
+// Буфер обмена Android.
+static void hx_set_clip(const jchar* text, jint n) {
+	int attached;
+	JNIEnv* env = hx_env(&attached);
+	if (env == NULL || hx_set_clip_id == NULL) {
+		return;
+	}
+	jstring str = (*env)->NewString(env, text, n);
+	(*env)->CallStaticVoidMethod(env, hx_class, hx_set_clip_id, str);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionClear(env);
+	}
+	(*env)->DeleteLocalRef(env, str);
+	if (attached) {
+		(*hx_vm)->DetachCurrentThread(hx_vm);
+	}
+}
+
+static int hx_has_clip(void) {
+	int attached;
+	JNIEnv* env = hx_env(&attached);
+	if (env == NULL || hx_has_clip_id == NULL) {
+		return 0;
+	}
+	jboolean r = (*env)->CallStaticBooleanMethod(env, hx_class, hx_has_clip_id);
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionClear(env);
+		r = JNI_FALSE;
+	}
+	if (attached) {
+		(*hx_vm)->DetachCurrentThread(hx_vm);
+	}
+	return r == JNI_TRUE;
+}
+
+// hx_get_clip — текст буфера как UTF-16 (освободить free); NULL — текста нет.
+static jchar* hx_get_clip(jint* outLen) {
+	*outLen = 0;
+	int attached;
+	JNIEnv* env = hx_env(&attached);
+	if (env == NULL || hx_get_clip_id == NULL) {
+		return NULL;
+	}
+	jstring s = (jstring)(*env)->CallStaticObjectMethod(env, hx_class, hx_get_clip_id);
+	jchar* buf = NULL;
+	if ((*env)->ExceptionCheck(env)) {
+		(*env)->ExceptionClear(env);
+	} else if (s != NULL) {
+		jsize n = (*env)->GetStringLength(env, s);
+		buf = (jchar*)malloc(sizeof(jchar) * (n + 1));
+		if (buf != NULL) {
+			(*env)->GetStringRegion(env, s, 0, n, buf);
+			*outLen = n;
+		}
+		(*env)->DeleteLocalRef(env, s);
+	}
+	if (attached) {
+		(*hx_vm)->DetachCurrentThread(hx_vm);
+	}
+	return buf;
 }
 
 // Строка Java как UTF-16.
@@ -489,3 +607,58 @@ func Java_dev_hexago_HexagoActivity_nativeOnTextAction(env *C.JNIEnv, clazz C.jc
 		textAction(int(action))
 	}
 }
+
+// MeasureText — ширина строки системным шрифтом Android размера size (запасной шрифт).
+func MeasureText(s string, size float64) float64 {
+	u, _ := utf16Of(s)
+	p, n := jchars(u)
+	return float64(C.hx_measure_text(p, n, C.float(size)))
+}
+
+// RenderText — картинка строки системным шрифтом Android размера size пикселей и цвета argb
+// (цветные эмодзи — своими цветами): размер, база от верха и пиксели ARGB без умножения на прозрачность.
+func RenderText(s string, size float64, argb uint32) (w, h int, ascent float64, pix []uint32) {
+	u, _ := utf16Of(s)
+	p, n := jchars(u)
+	var length C.jint
+	buf := C.hx_render_text(p, n, C.float(size), C.jint(int32(argb)), &length)
+	if buf == nil {
+		return 0, 0, 0, nil
+	}
+	defer C.free(unsafe.Pointer(buf))
+	all := unsafe.Slice((*int32)(unsafe.Pointer(buf)), int(length))
+	if len(all) < 3 {
+		return 0, 0, 0, nil
+	}
+	w, h = int(all[0]), int(all[1])
+	if w <= 0 || h <= 0 || len(all) < 3+w*h {
+		return 0, 0, 0, nil
+	}
+	pix = make([]uint32, w*h)
+	for i, v := range all[3 : 3+w*h] {
+		pix[i] = uint32(v)
+	}
+	return w, h, float64(all[2]) / 64, pix
+}
+
+// SetClipboard кладёт текст в буфер обмена Android.
+func SetClipboard(s string) {
+	u, _ := utf16Of(s)
+	p, n := jchars(u)
+	C.hx_set_clip(p, n)
+}
+
+// Clipboard — текст из буфера обмена Android; false — там нет текста.
+func Clipboard() (string, bool) {
+	var n C.jint
+	buf := C.hx_get_clip(&n)
+	if buf == nil {
+		return "", false
+	}
+	defer C.free(unsafe.Pointer(buf))
+	u := unsafe.Slice((*uint16)(unsafe.Pointer(buf)), int(n))
+	return string(utf16.Decode(u)), true
+}
+
+// HasClipboard — есть ли в буфере обмена текст (не читая его).
+func HasClipboard() bool { return C.hx_has_clip() != 0 }

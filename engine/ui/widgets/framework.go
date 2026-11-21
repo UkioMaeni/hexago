@@ -226,6 +226,8 @@ type BuildOwner struct {
 	textInput     TextInput       // клавиатура платформы
 	textClient    textInputClient // поле, к которому она подключена
 	keyboardShown bool
+	clipboard     Clipboard
+	postFrame     []func() // после раскладки этого кадра (когда положения на экране известны)
 	// OnNeedsBuild вызывается, когда появился первый «грязный» элемент — пора просить кадр.
 	OnNeedsBuild func()
 }
@@ -526,4 +528,11 @@ func syncRenderTree(e *Element, removed func(rendering.Box)) {
 	for _, c := range e.children {
 		syncRenderTree(c, removed)
 	}
+}
+
+// afterFrame вызывает f после раскладки кадра, когда положения виджетов на экране уже посчитаны
+// (BoundsOf). Изменения в f попадут в следующий кадр.
+func (o *BuildOwner) afterFrame(f func()) {
+	o.postFrame = append(o.postFrame, f)
+	o.requestFrame()
 }

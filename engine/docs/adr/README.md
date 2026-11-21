@@ -32,6 +32,7 @@ ADR (Architecture Decision Record) — короткая запись одног�
 | [0024](0024-navigator-and-dialogs.md) | Навигация: Navigator, переходы экранов, диалоги и нижняя панель | принято |
 | [0025](0025-snackbar-drawer-menus.md) | SnackBar, боковая панель и меню | принято |
 | [0026](0026-text-input.md) | Ввод текста: поля, фокус, клавиатура Android | принято |
+| [0027](0027-emoji-selection-clipboard.md) | Эмодзи, ручки выделения, буфер обмена, поле над клавиатурой | принято |
 
 Шаблон нового ADR:
 

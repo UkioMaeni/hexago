@@ -17,11 +17,12 @@ import (
 // phone — телефон 360×760 dp (плотность 2, системные панели по 24 dp) с ручным временем кадров.
 // Кадры рисуются только в повреждённой области, как на устройстве.
 type phone struct {
-	t      *testing.T
-	b      *widgets.Binding
-	canvas *gfx.Canvas
-	now    time.Duration
-	clock  *gestures.FakeClock // таймеры (SnackBar уходит сам) идут вместе с кадрами
+	t        *testing.T
+	b        *widgets.Binding
+	canvas   *gfx.Canvas
+	now      time.Duration
+	clock    *gestures.FakeClock // таймеры (SnackBar уходит сам) идут вместе с кадрами
+	keyboard float64             // высота экранной клавиатуры, dp
 }
 
 func newPhone(t *testing.T, app widgets.Widget) *phone {
@@ -35,7 +36,7 @@ func (p *phone) frame() {
 	p.b.Tick(p.now)
 	p.b.Paint(p.canvas, p.b.Layout(widgets.MediaQueryData{
 		Size: geom.Size{Width: 360, Height: 760}, DevicePixelRatio: 2,
-		Padding: geom.EdgeInsets{Top: 24, Bottom: 24},
+		Padding: geom.EdgeInsets{Top: 24, Bottom: 24}, ViewInsets: geom.EdgeInsets{Bottom: p.keyboard},
 	}))
 }
 

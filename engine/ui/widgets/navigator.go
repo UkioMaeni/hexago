@@ -85,7 +85,8 @@ type Navigator struct {
 	Home       Widget     // первый экран
 	Transition Transition // переход экранов по умолчанию; пустой — Fade
 
-	routes []*routeEntry // снизу вверх, вместе с уходящими
+	routes  []*routeEntry   // снизу вверх, вместе с уходящими
+	overlay []*OverlayEntry // слои поверх экранов (ShowOverlay)
 }
 
 // routeEntry — маршрут в стопке.
@@ -329,6 +330,10 @@ func (n *Navigator) Build(BuildContext) Widget {
 		if e.active() {
 			activeBelow = true
 		}
+	}
+	if len(n.overlay) > 0 {
+		layers = append(layers, Keyed{Key: &n.overlay, Child: theatreLayer{opaque: func() bool { return false },
+			Child: overlayLayer{entries: slices.Clone(n.overlay)}}})
 	}
 	return navigatorScope{nav: n, Child: theatre{Children: layers}}
 }

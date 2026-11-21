@@ -223,3 +223,30 @@ func (c *Canvas) DrawLayer(layer *Canvas, at image.Point, opaque bool) {
 		}
 	}
 }
+
+// DrawPixels накладывает картинку img (цвета без умножения на прозрачность) так, что её левый верхний
+// пиксель ложится в точку at (пиксели холста, без преобразования), с учётом обрезки и общей прозрачности.
+// Так рисуются готовые картинки символов запасного шрифта (цветные эмодзи).
+func (c *Canvas) DrawPixels(img *image.NRGBA, at image.Point) {
+	b := img.Rect
+	r := image.Rect(at.X, at.Y, at.X+b.Dx(), at.Y+b.Dy()).Intersect(c.st.clip)
+	a := uint32(c.st.alpha*255 + 0.5)
+	if r.Empty() || a == 0 {
+		return
+	}
+	mask := c.st.clipMask
+	for y := r.Min.Y; y < r.Max.Y; y++ {
+		row := c.pix[y*c.stride:]
+		src := img.Pix[(y-at.Y)*img.Stride:]
+		for x := r.Min.X; x < r.Max.X; x++ {
+			s := src[(x-at.X)*4:]
+			k := div255(uint32(s[3]) * a)
+			if mask != nil {
+				k = div255(k * uint32(mask.Pix[(y-mask.Rect.Min.Y)*mask.Stride+x-mask.Rect.Min.X]))
+			}
+			if k > 0 {
+				row[x] = mix(row[x], uint32(s[0]), uint32(s[1]), uint32(s[2]), k)
+			}
+		}
+	}
+}

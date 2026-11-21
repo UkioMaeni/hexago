@@ -102,3 +102,63 @@ func TestTextFields(t *testing.T) {
 		t.Errorf("клавиатура пароля: %+v", k.cfg)
 	}
 }
+
+// longForm — форма длиннее экрана: последнее поле внизу.
+type longForm struct {
+	widgets.State
+	last *widgets.FocusNode
+}
+
+func (l *longForm) Init(widgets.BuildContext) { l.last = &widgets.FocusNode{} }
+
+func (l *longForm) Build(widgets.BuildContext) widgets.Widget {
+	kids := []widgets.Widget{}
+	for i := range 7 {
+		kids = append(kids, TextField{Label: "Поле " + string(rune('А'+i))})
+	}
+	kids = append(kids, TextField{Label: "Последнее", Focus: l.last})
+	return Scaffold{AppBar: AppBar{Title: widgets.Text{Data: "Анкета"}}, Body: widgets.SingleChildScrollView{
+		Padding: geom.All(16), Child: widgets.Column{Spacing: 16, CrossAxisAlignment: rendering.CrossAxisStretch, Children: kids}}}
+}
+
+// Клавиатура закрыла нижнее поле: тело экрана укорачивается над ней, а прокрутка показывает поле.
+func TestFieldScrollsAboveKeyboard(t *testing.T) {
+	p := newPhone(t, App{Mode: ThemeLight, Home: longForm{}})
+	k := &keys{}
+	p.b.SetTextInput(k)
+	var l *longForm
+	var find func(e *widgets.Element)
+	find = func(e *widgets.Element) {
+		if s, ok := e.State().(*longForm); ok {
+			l = s
+		}
+		for _, c := range e.Children() {
+			find(c)
+		}
+	}
+	find(p.b.Root())
+	l.last.RequestFocus()
+	p.wait(300 * time.Millisecond) // поле в фокусе, а клавиатура выезжает чуть позже — как на телефоне
+	p.keyboard = 300
+	p.wait(500 * time.Millisecond)
+	if !k.shown {
+		t.Fatal("клавиатура не открылась")
+	}
+	// Ищем поле «Последнее» по его элементу и проверяем, что оно над клавиатурой.
+	var field *widgets.Element
+	var walk func(e *widgets.Element)
+	walk = func(e *widgets.Element) {
+		if tf, ok := e.State().(*TextField); ok && tf.Label == "Последнее" {
+			field = e
+		}
+		for _, c := range e.Children() {
+			walk(c)
+		}
+	}
+	walk(p.b.Root())
+	r := widgets.BoundsOf(field)
+	if r.Bottom > 760-300 || r.Top < 24+64 {
+		t.Errorf("поле в %v: должно быть между верхней панелью (88) и клавиатурой (460)", r)
+	}
+	hexagotest.Golden(t, "textfield_keyboard", p.image())
+}

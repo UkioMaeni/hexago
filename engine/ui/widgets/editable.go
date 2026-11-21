@@ -2,7 +2,6 @@ package widgets
 
 import (
 	"time"
-	"unicode/utf8"
 
 	"hexago/ui/geom"
 	"hexago/ui/gestures"
@@ -37,18 +36,29 @@ type EditableText struct {
 	OnChanged   func(text string) // текст изменён с клавиатуры
 	OnSubmitted func(text string) // нажата кнопка ввода («Готово», «Отправить»…)
 
-	ctrl       *TextEditingController
-	ownCtrl    bool
-	stopCtrl   func()
-	focus      *FocusNode
-	ownFocus   bool
-	stopFocus  func()
-	fromInput  bool // значение меняет клавиатура: не отправлять его ей обратно
-	cursorOn   bool
-	stopBlink  func()
-	downAt     time.Duration // когда палец коснулся поля в последний раз
-	lastTap    time.Duration // когда было прошлое касание — для двойного
-	lastTapPos geom.Offset
+	// Controls — ручки и меню выделения (Вырезать, Копировать, Вставить); nil — без них.
+	Controls SelectionControls
+	// ScrollPadding — сколько места вокруг поля держать видимым, когда прокрутка показывает его
+	// (поле получило фокус, открылась клавиатура); ноль — 20 dp со всех сторон.
+	ScrollPadding geom.EdgeInsets
+
+	ctrl        *TextEditingController
+	ownCtrl     bool
+	stopCtrl    func()
+	focus       *FocusNode
+	ownFocus    bool
+	stopFocus   func()
+	fromInput   bool // значение меняет клавиатура: не отправлять его ей обратно
+	cursorOn    bool
+	stopBlink   func()
+	downAt      time.Duration // когда палец коснулся поля в последний раз
+	lastTap     time.Duration // когда было прошлое касание — для двойного
+	lastTapPos  geom.Offset
+	overlay     *OverlayEntry // ручки и меню выделения
+	showHandles bool
+	showToolbar bool
+	dragging    int // какую ручку тянут (HandleKind); -1 — никакую
+	grab        geom.Offset
 }
 
 // Курсор мигает с таким полупериодом; два касания ближе doubleTapTime — двойное касание.
@@ -58,6 +68,7 @@ const (
 )
 
 func (e *EditableText) Init(ctx BuildContext) {
+	e.dragging = -1
 	e.useController(e.Controller)
 	e.useFocus(e.Focus)
 	if e.AutoFocus {
@@ -80,6 +91,7 @@ func (e *EditableText) Update(_ BuildContext, old EditableText) {
 func (e *EditableText) Dispose() {
 	e.stopCtrl()
 	e.stopFocus()
+	e.hideSelection()
 	e.disconnect() // сначала отключить клавиатуру: тогда снятие фокуса её спрячет
 	e.releaseFocus()
 	if e.stopBlink != nil {
@@ -159,11 +171,13 @@ func (e *EditableText) focusChanged() {
 	if e.focus.HasFocus() {
 		e.connect()
 		e.restartBlink()
+		e.owner().afterFrame(e.reveal)
 	} else {
 		e.disconnect()
 		if e.stopBlink != nil {
 			e.stopBlink()
 		}
+		e.hideSelection()
 		if !e.ctrl.Value().Selection.IsCollapsed() { // без фокуса выделения не видно
 			e.ctrl.SetSelection(Collapsed(e.ctrl.Value().Selection.Extent))
 		}
@@ -178,6 +192,9 @@ func (e *EditableText) valueChanged() {
 	}
 	if !e.fromInput && e.connected() && e.owner().textInput != nil {
 		e.owner().textInput.Update(e.ctrl.Value())
+	}
+	if e.overlay != nil {
+		e.overlay.MarkNeedsBuild() // ручки и меню — по новому выделению
 	}
 	if e.focus.HasFocus() {
 		e.restartBlink()
@@ -202,6 +219,9 @@ func (e *EditableText) restartBlink() {
 func (e *EditableText) editingFromPlatform(v TextEditingValue) {
 	if e.ReadOnly {
 		v.Text, v.Composing = e.ctrl.Value().Text, TextRange{}
+	}
+	if cur := e.ctrl.Value(); v.Text != cur.Text || v.Selection != cur.Selection {
+		e.hideSelection() // печатают или двигают курсор клавиатурой — ручки и меню не нужны
 	}
 	old := e.ctrl.Value().Text
 	e.fromInput = true
@@ -243,15 +263,19 @@ func (e *EditableText) box() *rendering.EditableBox {
 func (e *EditableText) pointerDown(p gestures.PointerEvent) { e.downAt = p.Time }
 
 // tap — касание: фокус и клавиатура, курсор под пальцем; второе быстрое касание выделяет слово.
+//
+// Новое положение курсора (и выделение) ставится до фокуса: клавиатура подключается сразу с ним.
+// Иначе она подключилась бы со старым и прислала бы его обратно уже после нового — курсор
+// отскочил бы, а ручки спрятались.
 func (e *EditableText) tap(d gestures.TapUpDetails) {
-	if !e.focus.HasFocus() {
-		e.focus.RequestFocus()
-	} else if o := e.owner(); o.textInput != nil {
+	wasFocused := e.focus.HasFocus()
+	if o := e.owner(); wasFocused && o.textInput != nil {
 		o.keyboardShown = true
 		o.textInput.Show(e.config(), e.ctrl.Value()) // клавиатуру могли спрятать кнопкой «Назад»
 	}
 	b := e.box()
 	if b == nil {
+		e.focus.RequestFocus()
 		return
 	}
 	i := b.IndexAt(d.Local)
@@ -259,30 +283,26 @@ func (e *EditableText) tap(d gestures.TapUpDetails) {
 	e.lastTap, e.lastTapPos = e.downAt, d.Local
 	if double {
 		e.lastTap = 0
-		e.selectWord(i)
+		e.selectWordAt(i)
+		return
+	}
+	sel := e.ctrl.Value().Selection
+	if wasFocused && sel.IsCollapsed() && sel.Extent == i {
+		e.showSelection(true, !e.showToolbar) // касание по курсору: ручка и меню «Вставить»
 		return
 	}
 	e.ctrl.SetValue(TextEditingValue{Text: e.ctrl.Text(), Selection: Collapsed(i)})
+	e.focus.RequestFocus()
+	e.showSelection(e.ctrl.Text() != "", false) // ручка под курсором, чтобы его двигать
 }
 
 // longPress — долгое нажатие выделяет слово под пальцем.
 func (e *EditableText) longPress(d gestures.LongPressStartDetails) {
-	if !e.focus.HasFocus() {
+	if b := e.box(); b != nil {
+		e.selectWordAt(b.IndexAt(d.Local)) // и даёт фокус
+	} else {
 		e.focus.RequestFocus()
 	}
-	if b := e.box(); b != nil {
-		e.selectWord(b.IndexAt(d.Local))
-	}
-}
-
-func (e *EditableText) selectWord(i int) {
-	if e.Obscure { // в пароле слов не видно — выделяется всё
-		n := utf8.RuneCountInString(e.ctrl.Text())
-		e.ctrl.SetValue(TextEditingValue{Text: e.ctrl.Text(), Selection: TextSelection{Base: 0, Extent: n}})
-		return
-	}
-	s, end := text.WordAt([]rune(e.ctrl.Text()), i)
-	e.ctrl.SetValue(TextEditingValue{Text: e.ctrl.Text(), Selection: TextSelection{Base: s, Extent: end}})
 }
 
 func (e *EditableText) Build(ctx BuildContext) Widget {
@@ -342,4 +362,16 @@ func (e *EditableText) releaseFocus() {
 	} else if e.focus.HasFocus() {
 		e.focus.Unfocus()
 	}
+}
+
+// reveal прокручивает экран так, чтобы поле было видно (его не закрывала клавиатура).
+func (e *EditableText) reveal() {
+	if !e.Mounted() || !e.focus.HasFocus() {
+		return
+	}
+	pad := e.ScrollPadding
+	if pad == (geom.EdgeInsets{}) {
+		pad = geom.All(20)
+	}
+	EnsureVisible(e.element, pad)
 }

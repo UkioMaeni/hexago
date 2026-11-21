@@ -229,6 +229,12 @@ func (b *Binding) Layout(media MediaQueryData) image.Rectangle {
 		b.media, full = media, true
 		b.root = b.owner.Mount(b.rootWidget())
 	case media != b.media:
+		if media.ViewInsets.Bottom > b.media.ViewInsets.Bottom {
+			// Открылась клавиатура: поле в фокусе выезжает из-под неё, когда экран под неё уложен.
+			if f, ok := b.owner.textClient.(*EditableText); ok {
+				b.owner.afterFrame(f.reveal)
+			}
+		}
 		b.media, full = media, true
 		b.owner.Update(b.root, b.rootWidget())
 	}
@@ -269,9 +275,11 @@ func (b *Binding) Layout(media MediaQueryData) image.Rectangle {
 	if b.failed != nil || full || b.wasFailed {
 		b.wasFailed = b.failed != nil
 		rendering.CollectDamage(b.root.box) // запомнить границы на будущее
+		b.runAfterFrame()
 		return screen
 	}
 	damage := union(rendering.CollectDamage(b.root.box), removed)
+	b.runAfterFrame()
 	if damage.IsEmpty() {
 		return image.Rectangle{}
 	}
@@ -326,4 +334,14 @@ func (b *Binding) HitTest(pos geom.Offset) rendering.HitTestResult {
 		rendering.HitTest(b.root.box, &r, pos)
 	}
 	return r
+}
+
+// runAfterFrame выполняет то, что ждало конца раскладки кадра (afterFrame).
+func (b *Binding) runAfterFrame() {
+	defer b.recoverEvent("действия после кадра")
+	run := b.owner.postFrame
+	b.owner.postFrame = nil
+	for _, f := range run {
+		f()
+	}
 }

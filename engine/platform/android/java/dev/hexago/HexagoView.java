@@ -3,6 +3,7 @@ package dev.hexago;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.icu.text.BreakIterator;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.Selection;
@@ -181,19 +182,23 @@ final class HexagoView extends SurfaceView {
         int start = Selection.getSelectionStart(editable), end = Selection.getSelectionEnd(editable);
         int lo = Math.max(0, Math.min(start, end)), hi = Math.max(start, end);
         boolean shift = e.isShiftPressed();
+        // Стирание и стрелки — по целым символам: эмодзи из нескольких кодов (семья, флаг) не разваливается.
+        BreakIterator chars = BreakIterator.getCharacterInstance();
+        chars.setText(editable.toString());
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_DEL:
                 if (lo != hi) {
                     editable.delete(lo, hi);
                 } else if (lo > 0) {
-                    editable.delete(Character.offsetByCodePoints(editable, lo, -1), lo);
+                    editable.delete(Math.max(0, chars.preceding(lo)), lo);
                 }
                 break;
             case KeyEvent.KEYCODE_FORWARD_DEL:
                 if (lo != hi) {
                     editable.delete(lo, hi);
                 } else if (hi < editable.length()) {
-                    editable.delete(hi, Character.offsetByCodePoints(editable, hi, 1));
+                    int next = chars.following(hi);
+                    editable.delete(hi, next == BreakIterator.DONE ? editable.length() : next);
                 }
                 break;
             case KeyEvent.KEYCODE_DPAD_LEFT:
@@ -203,9 +208,9 @@ final class HexagoView extends SurfaceView {
                 if (!shift && lo != hi) {
                     to = dir < 0 ? lo : hi;
                 } else {
-                    to = end + dir;
-                    if (to >= 0 && to <= editable.length()) {
-                        to = Character.offsetByCodePoints(editable, end, dir);
+                    to = dir < 0 ? (end > 0 ? chars.preceding(end) : 0) : (end < editable.length() ? chars.following(end) : end);
+                    if (to == BreakIterator.DONE) {
+                        to = dir < 0 ? 0 : editable.length();
                     }
                 }
                 to = clamp(to, editable.length());

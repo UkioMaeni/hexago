@@ -1,8 +1,13 @@
 package dev.hexago;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Insets;
 import android.os.Build;
 import android.os.Bundle;
@@ -131,6 +136,71 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
                 current.view.hide();
             }
         });
+    }
+
+    // Буфер обмена — для меню выделения текста. Вызываются из Go в потоке интерфейса.
+    static void setClipboard(String text) {
+        if (current != null) {
+            ClipboardManager c = (ClipboardManager) current.getSystemService(CLIPBOARD_SERVICE);
+            c.setPrimaryClip(ClipData.newPlainText("text", text));
+        }
+    }
+
+    static String getClipboard() {
+        if (current == null) {
+            return null;
+        }
+        ClipboardManager c = (ClipboardManager) current.getSystemService(CLIPBOARD_SERVICE);
+        ClipData d = c.getPrimaryClip();
+        if (d == null || d.getItemCount() == 0) {
+            return null;
+        }
+        CharSequence s = d.getItemAt(0).coerceToText(current);
+        return s == null ? null : s.toString();
+    }
+
+    /** Есть ли в буфере текст — не читая его (чтение Android показывает пользователю). */
+    static boolean hasClipboard() {
+        if (current == null) {
+            return false;
+        }
+        ClipboardManager c = (ClipboardManager) current.getSystemService(CLIPBOARD_SERVICE);
+        return c.hasPrimaryClip() && c.getPrimaryClipDescription() != null
+                && (c.getPrimaryClipDescription().hasMimeType("text/*"));
+    }
+
+    // Запасной шрифт: то, чего нет во встроенном шрифте Go (цветные эмодзи, иероглифы), меряет и рисует
+    // Android своими шрифтами. Вызываются из Go в потоке интерфейса.
+    private static final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    /** Ширина строки системным шрифтом размера size. */
+    static float measureText(String s, float size) {
+        synchronized (textPaint) {
+            textPaint.setTextSize(size);
+            return textPaint.measureText(s);
+        }
+    }
+
+    /** Картинка строки системным шрифтом: [ширина, высота, база*64, пиксели ARGB…]. */
+    static int[] renderText(String s, float size, int color) {
+        synchronized (textPaint) {
+            textPaint.setTextSize(size);
+            textPaint.setColor(color);
+            Paint.FontMetrics fm = textPaint.getFontMetrics();
+            int w = (int) Math.ceil(textPaint.measureText(s)), h = (int) Math.ceil(fm.descent - fm.ascent);
+            if (w <= 0 || h <= 0) {
+                return new int[] {0, 0, 0};
+            }
+            Bitmap b = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+            new Canvas(b).drawText(s, 0, -fm.ascent, textPaint);
+            int[] out = new int[3 + w * h];
+            out[0] = w;
+            out[1] = h;
+            out[2] = Math.round(-fm.ascent * 64);
+            b.getPixels(out, 3, w, 0, 0, w, h);
+            b.recycle();
+            return out;
+        }
     }
 
     // Клавиатура изменила текст поля или нажата её кнопка ввода — в Go.

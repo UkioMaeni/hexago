@@ -131,6 +131,8 @@ func (f *TextField) Build(ctx widgets.BuildContext) widgets.Widget {
 		Multiline: f.Multiline, Obscure: f.Obscure, Keyboard: f.Keyboard, Action: f.Action,
 		NoAutocorrect: f.NoAutocorrect, Capitalize: f.Capitalize, AutoFocus: f.AutoFocus, ReadOnly: f.ReadOnly,
 		OnChanged: f.OnChanged, OnSubmitted: f.OnSubmitted,
+		Controls:      TextSelectionControls{},
+		ScrollPadding: geom.EdgeInsets{Left: 16, Top: 32, Right: 16, Bottom: 44}, // с подписью и подсказкой
 	}
 	// Место под подсказку есть всегда: если бы дерево меняло форму, поле ввода пересоздавалось бы
 	// и теряло фокус.

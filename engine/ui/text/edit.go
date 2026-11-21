@@ -25,10 +25,12 @@ type EditLayout struct {
 }
 
 // editLine — строка: руны [start, end) без перевода строки; x[i] — где начинается руна start+i,
-// x[end-start] — где строка кончается.
+// x[end-start] — где строка кончается. stop[i] — может ли там стоять курсор (не внутри эмодзи из
+// нескольких рун и не между буквой и её диакритикой).
 type editLine struct {
 	start, end int
 	x          []float64
+	stop       []bool
 }
 
 // LayoutEditable верстает текст s. wrap — переносить по словам в ширину maxWidth (многострочное поле);
@@ -55,35 +57,50 @@ func LayoutEditable(s string, style Style, maxWidth float64, wrap bool) *EditLay
 // addHardLine добавляет строку [start, end) — с переносами по словам, если wrap.
 func (l *EditLayout) addHardLine(face font.Face, start, end int, maxWidth float64, wrap bool) {
 	spacing := l.style.LetterSpacing
+	size := l.style.size()
 	for {
-		x := []float64{0}
+		x, stop := []float64{0}, []bool{true}
 		prev := rune(-1)
 		breakAt := -1 // после последнего пробела: здесь можно перенести
 		i := start
-		for ; i < end; i++ {
-			r := l.runes[i]
-			w := x[len(x)-1]
-			if prev >= 0 {
-				w += fx(face.Kern(prev, r))
+		for i < end {
+			j := min(ClusterEnd(l.runes, i), end) // видимый символ [i, j)
+			cl := l.runes[i:j]
+			before := x[len(x)-1]
+			w := before
+			if needsFallback(cl) {
+				w += measureFallback(string(cl), size) + spacing // эмодзи и то, чего нет в шрифте Go
+				prev = -1
+			} else {
+				for _, r := range cl {
+					if prev >= 0 {
+						w += fx(face.Kern(prev, r))
+					}
+					a, _ := face.GlyphAdvance(r)
+					w += fx(a) + spacing
+					prev = r
+				}
 			}
-			a, _ := face.GlyphAdvance(r)
-			w += fx(a) + spacing
 			// Не помещается — перенести после последнего пробела (пробелы остаются в конце строки)
 			// или, если пробела не было, прямо здесь.
-			if wrap && w > maxWidth && !unicode.IsSpace(r) && i > start {
+			if wrap && w > maxWidth && !unicode.IsSpace(l.runes[i]) && i > start {
 				if breakAt > start {
 					i = breakAt
-					x = x[:breakAt-start+1]
+					x, stop = x[:breakAt-start+1], stop[:breakAt-start+1]
 				}
 				break
 			}
-			x = append(x, w)
-			prev = r
-			if unicode.IsSpace(r) {
-				breakAt = i + 1
+			for k := i + 1; k < j; k++ { // внутри символа курсор не стоит
+				x, stop = append(x, before), append(stop, false)
 			}
+			x, stop = append(x, w), append(stop, true)
+			if unicode.IsSpace(l.runes[i]) {
+				breakAt = j
+			}
+			i = j
 		}
-		l.lines = append(l.lines, editLine{start: start, end: i, x: x})
+		l.lines = append(l.lines, editLine{start: start, end: i, x: x, stop: stop})
+
 		l.Width = math.Max(l.Width, x[len(x)-1])
 		if i >= end {
 			return
@@ -119,16 +136,20 @@ func (l *EditLayout) IndexAt(p geom.Offset) int {
 	n := int(math.Floor(p.Y / l.line))
 	n = max(0, min(n, len(l.lines)-1))
 	ln := l.lines[n]
-	best := ln.start
-	for j := range ln.x {
-		if j > 0 && (p.X < ln.x[j-1] || p.X < (ln.x[j-1]+ln.x[j])/2) {
+	best, prevX := ln.start, ln.x[0]
+	for j := 1; j < len(ln.x); j++ {
+		if !ln.stop[j] {
+			continue
+		}
+		if p.X < (prevX+ln.x[j])/2 {
 			break
 		}
-		best = ln.start + j
+		best, prevX = ln.start+j, ln.x[j]
 	}
 	// Мягкий перенос: пробел в конце строки, конец строки — уже начало следующей.
 	if best == ln.end && n+1 < len(l.lines) && l.lines[n+1].start == ln.end && best > ln.start {
-		best--
+		for best--; best > ln.start && !ln.stop[best-ln.start]; best-- {
+		}
 	}
 	return best
 }
@@ -172,6 +193,11 @@ func WordAt(runes []rune, i int) (start, end int) {
 		if i > 0 && isWord(runes[i-1]) {
 			i--
 		} else {
+			for c := 0; c < len(runes); c = ClusterEnd(runes, c) { // эмодзи и знаки — целым символом
+				if e := ClusterEnd(runes, c); i < e {
+					return c, e
+				}
+			}
 			return i, i + 1
 		}
 	}
@@ -196,6 +222,6 @@ func (l *EditLayout) Paint(c *gfx.Canvas, at geom.Offset) {
 			continue
 		}
 		baseline := m.Apply(geom.Offset{X: at.X, Y: at.Y + l.ascent + float64(n)*l.line})
-		drawLine(c, face, string(l.runes[ln.start:ln.end]), baseline, col, l.style.LetterSpacing*k)
+		drawLine(c, face, l.style.size()*k, string(l.runes[ln.start:ln.end]), baseline, col, l.style.LetterSpacing*k)
 	}
 }

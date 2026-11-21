@@ -10,6 +10,7 @@ import (
 	"hexago/ui/geom"
 	"hexago/ui/gestures"
 	"hexago/ui/gfx"
+	"hexago/ui/text"
 	"hexago/ui/widgets"
 )
 
@@ -25,6 +26,8 @@ func start(root widgets.Widget) {
 	binding.SetHandlesBack = android.SetHandlesBack
 	android.SetBack(binding.HandleBack)
 	binding.SetTextInput(keyboard{})
+	binding.SetClipboard(clipboard{})
+	text.SetFallback(systemFont{}) // эмодзи и то, чего нет в шрифте Go, рисует Android
 	android.SetEditing(func(s android.EditingState) {
 		binding.HandleTextEditing(widgets.TextEditingValue{
 			Text:      s.Text,
@@ -122,3 +125,29 @@ func (keyboard) Show(cfg widgets.TextInputConfig, v widgets.TextEditingValue) {
 func (keyboard) Update(v widgets.TextEditingValue) { android.UpdateEditing(editingState(v)) }
 
 func (keyboard) Hide() { android.HideKeyboard() }
+
+// systemFont — запасной шрифт: системные шрифты Android (цветные эмодзи, иероглифы и прочее, чего нет
+// во встроенном шрифте Go).
+type systemFont struct{}
+
+func (systemFont) Measure(s string, size float64) float64 { return android.MeasureText(s, size) }
+
+func (systemFont) Render(s string, size float64, col gfx.Color) (*image.NRGBA, float64) {
+	argb := uint32(col.A)<<24 | uint32(col.R)<<16 | uint32(col.G)<<8 | uint32(col.B)
+	w, h, ascent, pix := android.RenderText(s, size, argb)
+	if w == 0 {
+		return nil, 0
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i, p := range pix {
+		img.Pix[i*4], img.Pix[i*4+1], img.Pix[i*4+2], img.Pix[i*4+3] = uint8(p>>16), uint8(p>>8), uint8(p), uint8(p>>24)
+	}
+	return img, ascent
+}
+
+// clipboard — системный буфер обмена Android.
+type clipboard struct{}
+
+func (clipboard) SetText(s string)     { android.SetClipboard(s) }
+func (clipboard) Text() (string, bool) { return android.Clipboard() }
+func (clipboard) HasText() bool        { return android.HasClipboard() }

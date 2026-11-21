@@ -462,3 +462,43 @@ func (w pageViewport) UpdateRenderObject(_ BuildContext, b rendering.Box) {
 	v := b.(*rendering.PageViewportBox)
 	v.Axis, v.Page, v.Metrics = w.Axis, w.Page, w.Metrics
 }
+
+// EnsureVisible плавно прокручивает ближайшую прокрутку над ctx так, чтобы виджет был виден целиком
+// вместе с запасом padding (сверху — над ним, снизу — под ним). Так поле ввода выезжает из-под
+// клавиатуры. Положения берутся из прошлого кадра.
+func EnsureVisible(ctx BuildContext, padding geom.EdgeInsets) {
+	e := ctx.element()
+	target := BoundsOf(e)
+	if target.IsEmpty() {
+		return
+	}
+	for p := e.parent; p != nil; p = p.parent {
+		s, ok := p.State().(*scrollable)
+		if !ok {
+			continue
+		}
+		view := BoundsOf(p)
+		var delta float64
+		if s.Horizontal {
+			lo, hi := target.Left-padding.Left, target.Right+padding.Right
+			switch {
+			case hi > view.Right && lo-(hi-view.Right) >= view.Left:
+				delta = hi - view.Right
+			case lo < view.Left:
+				delta = lo - view.Left
+			}
+		} else {
+			lo, hi := target.Top-padding.Top, target.Bottom+padding.Bottom
+			switch {
+			case hi > view.Bottom:
+				delta = math.Min(hi-view.Bottom, lo-view.Top) // не уводить верх за край
+			case lo < view.Top:
+				delta = lo - view.Top
+			}
+		}
+		if delta != 0 {
+			s.animateTo(s.offset+delta, 200*time.Millisecond, animation.Standard)
+		}
+		return
+	}
+}

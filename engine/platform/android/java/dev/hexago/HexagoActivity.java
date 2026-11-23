@@ -3,6 +3,7 @@ package dev.hexago;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -42,7 +43,7 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // Реализации — в Go, пакет hexago/platform/android.
-    private static native void nativeOnCreate(String cacheDir);
+    private static native void nativeOnCreate(String cacheDir, AssetManager assets);
     private static native void nativeDraw(Surface surface, float density,
             int insetLeft, int insetTop, int insetRight, int insetBottom, int keyboard, boolean darkTheme,
             long frameTimeNanos, boolean full);
@@ -222,8 +223,8 @@ public class HexagoActivity extends Activity implements SurfaceHolder.Callback {
         super.onCreate(savedInstanceState);
         current = this;
         // Запускает main приложения (там вызывается app.Run). Папка кеша нужна,
-        // чтобы сохранить текст паники, если Go-код упадёт.
-        nativeOnCreate(getCacheDir().getAbsolutePath());
+        // чтобы сохранить текст паники, если Go-код упадёт. AssetManager — чтобы Go читал файлы из assets APK.
+        nativeOnCreate(getCacheDir().getAbsolutePath(), getApplicationContext().getAssets());
 
         // Поверхность во весь экран. Сама она ничего не рисует — рисует Go.
         view = new HexagoView(this);

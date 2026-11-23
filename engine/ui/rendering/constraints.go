@@ -109,3 +109,26 @@ func clampF(v, lo, hi float64) float64 {
 	}
 	return v
 }
+
+// ConstrainAspect — размер в пределах c, как можно ближе к s и с теми же пропорциями
+// (если ограничения это позволяют), как constrainSizeAndAttemptToPreserveAspectRatio во Flutter.
+func (c Constraints) ConstrainAspect(s geom.Size) geom.Size {
+	if c.IsTight() || s.Width <= 0 || s.Height <= 0 {
+		return c.Smallest()
+	}
+	ar := s.Width / s.Height
+	w, h := s.Width, s.Height
+	if w > c.MaxWidth {
+		w, h = c.MaxWidth, c.MaxWidth/ar
+	}
+	if h > c.MaxHeight {
+		w, h = c.MaxHeight*ar, c.MaxHeight
+	}
+	if w < c.MinWidth {
+		w, h = c.MinWidth, c.MinWidth/ar
+	}
+	if h < c.MinHeight {
+		w, h = c.MinHeight*ar, c.MinHeight
+	}
+	return c.Constrain(geom.Size{Width: w, Height: h})
+}

@@ -321,7 +321,7 @@ func mainMain()
 var started bool
 
 //export Java_dev_hexago_HexagoActivity_nativeOnCreate
-func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass, cacheDir C.jstring) {
+func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass, cacheDir C.jstring, assets C.jobject) {
 	// Activity может создаваться заново (например, после возврата в приложение),
 	// а main должна выполниться один раз за всё время жизни процесса.
 	if started {
@@ -330,6 +330,7 @@ func Java_dev_hexago_HexagoActivity_nativeOnCreate(env *C.JNIEnv, clazz C.jclass
 	started = true
 	C.hx_init(env, clazz)
 	setupCrashOutput(goString(env, cacheDir))
+	setAssets(env, assets) // до main: приложение может читать ассеты сразу
 	mainMain()
 }
 

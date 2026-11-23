@@ -2,6 +2,8 @@ package runner
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"hexago/tools/sdk"
@@ -46,5 +48,26 @@ func TestCheckProcess(t *testing.T) {
 		if got := checkProcess(c.out, c.err, "12994"); got != c.want {
 			t.Errorf("checkProcess(%q, %v) = %v; ожидали %v", c.out, c.err, got, c.want)
 		}
+	}
+}
+
+func TestOldProjectHints(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, text string) {
+		p := filepath.Join(dir, "app", name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("build.gradle.kts", `java.srcDir("x")`)
+	write(filepath.Join("src", "main", "AndroidManifest.xml"), `<manifest></manifest>`)
+	if h := oldProjectHints(dir); len(h) != 2 {
+		t.Fatalf("старый проект: %q", h)
+	}
+	write("build.gradle.kts", `java.srcDir("x")`+"\n"+`assets.srcDir("../../assets")`)
+	write(filepath.Join("src", "main", "AndroidManifest.xml"), `<uses-permission android:name="android.permission.INTERNET" />`)
+	if h := oldProjectHints(dir); len(h) != 0 {
+		t.Errorf("новый проект: %q", h)
 	}
 }

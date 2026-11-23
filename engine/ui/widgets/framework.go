@@ -227,7 +227,8 @@ type BuildOwner struct {
 	textClient    textInputClient // поле, к которому она подключена
 	keyboardShown bool
 	clipboard     Clipboard
-	postFrame     []func() // после раскладки этого кадра (когда положения на экране известны)
+	postFrame     []func()       // после раскладки этого кадра (когда положения на экране известны)
+	post          func(f func()) // выполнить в потоке интерфейса из любой горутины (Binding.Post)
 	// OnNeedsBuild вызывается, когда появился первый «грязный» элемент — пора просить кадр.
 	OnNeedsBuild func()
 }

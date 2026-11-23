@@ -5,6 +5,7 @@ import (
 	"image"
 	"math"
 	"runtime/debug"
+	"sync"
 	"time"
 
 	"hexago/ui/animation"
@@ -58,6 +59,15 @@ type Binding struct {
 	SetHandlesBack func(handles bool)
 	handlesBack    bool
 
+	// Post выполняет функцию в потоке интерфейса; её вызывают из любой горутины (загрузка картинок).
+	// app.Run задаёт свою. Без неё функции копятся и выполняются в начале следующего кадра (так
+	// работают тесты).
+	Post   func(f func())
+	posted struct {
+		sync.Mutex
+		fns []func()
+	}
+
 	failed    any  // ошибка раскладки этого кадра (кадр заливается красным)
 	wasFailed bool // прошлый кадр был с ошибкой: следующий рисуется целиком
 }
@@ -103,6 +113,15 @@ func NewBinding(app Widget) *Binding {
 	}}
 	b.owner.gestures = gestures.Env{Arena: &b.arena, Clock: &gestures.FakeClock{}}
 	b.owner.scheduler = b
+	b.owner.post = func(f func()) {
+		if b.Post != nil {
+			b.Post(f)
+			return
+		}
+		b.posted.Lock()
+		b.posted.fns = append(b.posted.fns, f)
+		b.posted.Unlock()
+	}
 	return b
 }
 
@@ -223,6 +242,7 @@ func (b *Binding) Layout(media MediaQueryData) image.Rectangle {
 	if media.DevicePixelRatio <= 0 {
 		media.DevicePixelRatio = 1
 	}
+	b.runPosted()
 	full := false
 	switch {
 	case b.root == nil:
@@ -343,5 +363,19 @@ func (b *Binding) runAfterFrame() {
 	b.owner.postFrame = nil
 	for _, f := range run {
 		f()
+	}
+}
+
+// runPosted выполняет функции, накопленные Post без платформы (в тестах).
+func (b *Binding) runPosted() {
+	b.posted.Lock()
+	run := b.posted.fns
+	b.posted.fns = nil
+	b.posted.Unlock()
+	for _, f := range run {
+		func() {
+			defer b.recoverEvent("функция из Post")
+			f()
+		}()
 	}
 }

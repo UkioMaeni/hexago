@@ -21,9 +21,11 @@ android {
 
     // Java-часть движка (HexagoActivity) берётся прямо из папки движка —
     // так же, как Go-часть через replace в go.mod.
+    // Папка assets/ проекта (картинки и другие файлы приложения) попадает в APK как есть.
     sourceSets {
         getByName("main") {
             java.srcDir("{{.EnginePath}}/platform/android/java")
+            assets.srcDir("../../assets")
         }
     }
 

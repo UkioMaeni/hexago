@@ -109,6 +109,9 @@ func runAndroid(ctx *cli.Context, serial string, events bool) error {
 	if err != nil {
 		return err
 	}
+	for _, h := range oldProjectHints(androidDir) {
+		ctx.Printf("Внимание: %s\n", h)
+	}
 
 	// 1. Go → libhexago.so. Сначала зависимости: движок может требовать новые модули.
 	if err := sdk.Tidy(project); err != nil {
@@ -444,4 +447,21 @@ func emit(ctx *cli.Context, event string, fields map[string]string) {
 	}
 	data, _ := json.Marshal(m)
 	ctx.Printf("%s%s\n", EventPrefix, data)
+}
+
+// oldProjectHints — чего не хватает проекту, созданному старой версией hexago create:
+// сами файлы проекта hexago не правит, только подсказывает.
+func oldProjectHints(androidDir string) []string {
+	var hints []string
+	gradle, _ := os.ReadFile(filepath.Join(androidDir, "app", "build.gradle.kts"))
+	if !bytes.Contains(gradle, []byte("assets.srcDir")) {
+		hints = append(hints, `файлы из assets/ не попадут в APK. Добавь в android/app/build.gradle.kts, `+
+			`в sourceSets { getByName("main") { … } }, строку: assets.srcDir("../../assets")`)
+	}
+	manifest, _ := os.ReadFile(filepath.Join(androidDir, "app", "src", "main", "AndroidManifest.xml"))
+	if !bytes.Contains(manifest, []byte("android.permission.INTERNET")) {
+		hints = append(hints, `приложению недоступна сеть (картинки по адресу, запросы). Добавь в `+
+			`android/app/src/main/AndroidManifest.xml строку: <uses-permission android:name="android.permission.INTERNET" />`)
+	}
+	return hints
 }

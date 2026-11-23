@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hexago/platform/android"
+	"hexago/ui/assets"
 	"hexago/ui/geom"
 	"hexago/ui/gestures"
 	"hexago/ui/gfx"
@@ -22,12 +23,14 @@ import (
 func start(root widgets.Widget) {
 	binding := widgets.NewBinding(root)
 	binding.RequestFrame = android.RequestFrame
+	binding.Post = android.Post // загрузки картинок и другие горутины возвращаются в поток интерфейса
 	binding.SetSystemBars = android.SetSystemBars
 	binding.SetHandlesBack = android.SetHandlesBack
 	android.SetBack(binding.HandleBack)
 	binding.SetTextInput(keyboard{})
 	binding.SetClipboard(clipboard{})
 	text.SetFallback(systemFont{}) // эмодзи и то, чего нет в шрифте Go, рисует Android
+	assets.SetFS(android.Assets()) // папка assets/ проекта — внутри APK
 	android.SetEditing(func(s android.EditingState) {
 		binding.HandleTextEditing(widgets.TextEditingValue{
 			Text:      s.Text,
